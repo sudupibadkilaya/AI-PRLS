@@ -49,6 +49,45 @@ $("#input").addEventListener("keydown", (e) => {
     $("#composer").requestSubmit();
   }
 });
+$("#send-btn").before(dictationButton($("#input")));
+
+/* ---------- dictation (speech-to-text) ----------
+   Typed and spoken input are both first-class here: the mic button is an
+   alternative to typing, not a replacement — students pick whichever fits
+   the moment, especially for reasoning/reflection answers. */
+function dictationButton(target) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return document.createTextNode(""); // unsupported browser: no button, no error
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "mic-btn";
+  btn.title = "Dictate your answer";
+  btn.textContent = "\u{1F3A4}";
+
+  let recognition = null;
+  let listening = false;
+
+  btn.addEventListener("click", () => {
+    if (listening) { recognition.stop(); return; }
+    recognition = new SR();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => { listening = true; btn.classList.add("listening"); };
+    recognition.onend = () => { listening = false; btn.classList.remove("listening"); };
+    recognition.onerror = () => { listening = false; btn.classList.remove("listening"); };
+    recognition.onresult = (e) => {
+      const heard = e.results[0][0].transcript;
+      target.value = (target.value.trim() ? target.value.trim() + " " : "") + heard;
+      target.dispatchEvent(new Event("input"));
+      target.focus();
+    };
+    recognition.start();
+  });
+
+  return btn;
+}
 
 /* ---------- message rendering ---------- */
 function msgShell(who, cls) {
@@ -126,6 +165,8 @@ function setBusy(v) { $("#send-btn").disabled = v; }
 
 function renderResponse(data) {
   if (data.type === "question") return renderQuestion(data);
+  if (data.type === "scaffold") return renderScaffold(data);
+  if (data.type === "feedback") return renderFeedback(data);
   if (data.type === "progress") return renderProgress(data);
   addTutorText(data.text, data.message_id);
 }
@@ -137,11 +178,21 @@ const BLOOM_LABELS = {knowledge: "Knowledge", comprehension: "Comprehension",
                        application: "Application", analysis: "Analysis",
                        synthesis: "Synthesis", evaluation: "Evaluation"};
 
-function renderQuestion(data) {
+function renderQuestion(data, hintText) {
   const q = data.question;
-  const multi = q.format === "scenario";
   const b = msgShell("Tutor", "tutor");
   b.style.whiteSpace = "normal";
+
+  if (hintText) {
+    const hint = document.createElement("div");
+    hint.className = "socratic";
+    hint.innerHTML = `<div class="socratic-label">Hint \u2014 have another look</div>`;
+    const hp = document.createElement("div");
+    hp.textContent = hintText;
+    hint.appendChild(hp);
+    b.appendChild(hint);
+  }
+
   const card = document.createElement("div");
   card.className = "qcard";
 
@@ -149,18 +200,17 @@ function renderQuestion(data) {
   if (q.chapter) meta.push("Chapter " + q.chapter);
   if (q.domain) meta.push("Domain " + q.domain + " \u00b7 " + (DOMAINS[q.domain] || ""));
   if (q.bloom_level) meta.push(BLOOM_LABELS[q.bloom_level] || q.bloom_level);
-  meta.push(multi ? "Scenario \u2014 pick 3 of 6" : "Single answer");
+  meta.push("Single best answer");
   card.innerHTML = `<div class="qmeta">${meta.join("  \u00b7  ")}</div>
                     <div class="qstem"></div>
                     <div class="qinstr">${data.instruction}</div>`;
   card.querySelector(".qstem").textContent = q.stem;
 
-  const inputType = multi ? "checkbox" : "radio";
   q.options.forEach((opt, i) => {
     const label = document.createElement("label");
     label.className = "qopt";
     const input = document.createElement("input");
-    input.type = inputType; input.name = "qopt"; input.value = i;
+    input.type = "radio"; input.name = "qopt"; input.value = i;
     const span = document.createElement("span");
     span.textContent = String.fromCharCode(65 + i) + ". " + opt;
     label.appendChild(input); label.appendChild(span);
@@ -172,23 +222,23 @@ function renderQuestion(data) {
   why.innerHTML = `<label>Why did you choose that? (a sentence or two)</label>`;
   const ta = document.createElement("textarea");
   why.appendChild(ta);
+  why.appendChild(dictationButton(ta));
   card.appendChild(why);
 
   const submit = document.createElement("button");
   submit.className = "qsubmit";
-  submit.textContent = "Submit answer";
-  submit.addEventListener("click", () => submitAnswer(card, q, multi, ta, submit));
+  submit.textContent = hintText ? "Submit answer (2nd attempt)" : "Submit answer";
+  submit.addEventListener("click", () => submitAnswer(card, q, ta, submit));
   card.appendChild(submit);
 
   b.appendChild(card);
   scrollDown();
 }
 
-async function submitAnswer(card, q, multi, ta, submit) {
+async function submitAnswer(card, q, ta, submit) {
   const selected = [...card.querySelectorAll("input[name=qopt]:checked")]
     .map((x) => parseInt(x.value, 10));
-  if (multi && selected.length !== 3) { alert("Please select exactly 3 responses."); return; }
-  if (!multi && selected.length !== 1) { alert("Please select one answer."); return; }
+  if (selected.length !== 1) { alert("Please select one answer."); return; }
 
   submit.disabled = true;
   card.querySelectorAll("input").forEach((x) => (x.disabled = true));
@@ -203,15 +253,19 @@ async function submitAnswer(card, q, multi, ta, submit) {
     });
     const data = await res.json();
     pending.remove();
-    if (data.type !== "coaching") { renderResponse(data); return; }
-    markOptions(card, selected, data.correct_options);
-    renderCoaching(data);
+    if (data.type === "feedback") markOptions(card, selected, data.correct_options);
+    renderResponse(data);
   } catch {
     pending.remove();
     addTutorText("Something went wrong scoring that answer. Please try again.");
   } finally {
     setBusy(false);
   }
+}
+
+/* ---------- scaffold (wrong first attempt) ---------- */
+function renderScaffold(data) {
+  renderQuestion(data, data.hint);
 }
 
 function markOptions(card, selected, correct) {
@@ -221,7 +275,7 @@ function markOptions(card, selected, correct) {
   });
 }
 
-function renderCoaching(data) {
+function renderFeedback(data) {
   const b = msgShell("Tutor", "tutor");
   b.style.whiteSpace = "normal";
   const v = document.createElement("span");
@@ -267,6 +321,15 @@ function renderCoaching(data) {
     socratic.appendChild(q);
     b.appendChild(socratic);
   }
+  if (data.reasoning_principle) {
+    const rp = document.createElement("div");
+    rp.className = "principle";
+    rp.innerHTML = `<div class="socratic-label">Reasoning principle</div>`;
+    const rpText = document.createElement("div");
+    rpText.textContent = data.reasoning_principle;
+    rp.appendChild(rpText);
+    b.appendChild(rp);
+  }
   if (data.textbook_pointer) {
     const next = document.createElement("div");
     next.className = "pointer";
@@ -275,6 +338,49 @@ function renderCoaching(data) {
   }
 
   b.parentElement.appendChild(feedbackBar(data.message_id));
+
+  if (data.reflection_prompt) renderReflectPrompt(data.reflection_prompt);
+  scrollDown();
+}
+
+/* ---------- reflect step ---------- */
+function renderReflectPrompt(promptText) {
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  b.classList.add("reflect-card");
+
+  const label = document.createElement("div");
+  label.className = "socratic-label";
+  label.textContent = "Reflect";
+  b.appendChild(label);
+
+  const q = document.createElement("div");
+  q.textContent = promptText;
+  b.appendChild(q);
+
+  const ta = document.createElement("textarea");
+  b.appendChild(ta);
+  b.appendChild(dictationButton(ta));
+
+  const submit = document.createElement("button");
+  submit.className = "qsubmit";
+  submit.textContent = "Submit reflection";
+  submit.addEventListener("click", async () => {
+    const text = ta.value.trim();
+    if (!text) { alert("Add a sentence or two before submitting."); return; }
+    submit.disabled = true; ta.disabled = true;
+    try {
+      const res = await fetch("/api/reflect", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ study_id: studyId, reflection: text }),
+      });
+      const data = await res.json();
+      renderResponse(data);
+    } catch {
+      addTutorText("Something went wrong saving that reflection. Please try again.");
+    }
+  });
+  b.appendChild(submit);
   scrollDown();
 }
 
@@ -295,7 +401,9 @@ function renderProgress(data) {
     stats.innerHTML = `
       <div class="pstat"><div class="num">${s.total_attempts}</div><div class="lab">questions answered</div></div>
       <div class="pstat"><div class="num">${Math.round((s.accuracy || 0) * 100)}%</div><div class="lab">overall accuracy</div></div>
-      <div class="pstat"><div class="num">${s.recent10_accuracy != null ? Math.round(s.recent10_accuracy * 100) + "%" : "\u2013"}</div><div class="lab">last 10</div></div>`;
+      <div class="pstat"><div class="num">${s.recent10_accuracy != null ? Math.round(s.recent10_accuracy * 100) + "%" : "\u2013"}</div><div class="lab">last 10</div></div>
+      <div class="pstat"><div class="num">${s.independent_rate != null ? Math.round(s.independent_rate * 100) + "%" : "\u2013"}</div><div class="lab">solved independently</div></div>
+      <div class="pstat"><div class="num">${s.reflections_completed || 0}</div><div class="lab">reflections completed</div></div>`;
     b.appendChild(stats);
 
     const bars = document.createElement("div");

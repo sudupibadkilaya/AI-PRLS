@@ -73,12 +73,24 @@ def _mock_route(messages: list[dict]) -> str:
     return '{"route": "explain", "chapter": null, "topic": "general"}'
 
 
+_COACH_ONLY_FIELDS = {"bloom_level", "feedback", "trap", "next_step", "textbook_pointer"}
+
+
 def _mock_coach(messages: list[dict]) -> str:
     """Match feedback to whichever question was just answered, when possible."""
     last = messages[-1]["content"] if messages else ""
     match = _keyword_match(last, _EXAMPLES["coach_feedback"])
     chosen = match or _next_example("coach", _EXAMPLES["coach_feedback"])
-    return json.dumps({k: v for k, v in chosen.items() if k != "keywords"})
+    return json.dumps({k: v for k, v in chosen.items() if k in _COACH_ONLY_FIELDS})
+
+
+def _mock_scaffold(messages: list[dict]) -> str:
+    """Socratic hint tied to whichever question the student just got wrong."""
+    last = messages[-1]["content"] if messages else ""
+    match = _keyword_match(last, _EXAMPLES["coach_feedback"])
+    if match and match.get("scaffold_hint"):
+        return match["scaffold_hint"]
+    return _EXAMPLES["scaffold_fallback"]
 
 
 def _mock_explain(messages: list[dict]) -> str:
@@ -103,6 +115,8 @@ async def chat(role: str, system: str, messages: list[dict]) -> str:
             return _mock_route(messages)
         if role == "question":
             return json.dumps(_next_example("question", _EXAMPLES["questions"]))
+        if role == "scaffold":
+            return _mock_scaffold(messages)
         if role == "coach":
             return _mock_coach(messages)
         if role == "explain":

@@ -31,6 +31,11 @@ class AnswerBody(BaseModel):
     explanation: str = ""
 
 
+class ReflectBody(BaseModel):
+    study_id: str
+    reflection: str = Field(min_length=1, max_length=2000)
+
+
 class FeedbackBody(BaseModel):
     study_id: str
     message_id: str
@@ -65,6 +70,11 @@ async def answer(body: AnswerBody):
     return await orchestrator.handle_answer(
         body.study_id.strip(), body.selected, body.explanation.strip()
     )
+
+
+@app.post("/api/reflect")
+async def reflect(body: ReflectBody):
+    return await orchestrator.handle_reflect(body.study_id.strip(), body.reflection.strip())
 
 
 @app.post("/api/feedback")

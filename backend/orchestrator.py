@@ -7,8 +7,17 @@ import json
 
 from . import agents, db
 
-# One pending question per student, held server-side between /chat and /answer
+# One pending question per student, held server-side across the
+# Attempt -> Scaffold -> Reconsider -> Respond -> Feedback -> Reflect loop.
+# Shape: {"question": q, "stage": "attempt" | "reconsider" | "reflect",
+#         "first_selected": list[int] | None, "first_explanation": str | None,
+#         "attempt_id": str | None}
 _pending: dict[str, dict] = {}
+
+REFLECTION_PROMPT = (
+    "In a sentence or two: what's the one thing you'll take from this case "
+    "into the next one?"
+)
 
 
 async def handle_chat(study_id: str, message: str) -> dict:
@@ -28,15 +37,14 @@ async def handle_chat(study_id: str, message: str) -> dict:
                     "please ask me again in a moment.")
             mid = db.log_message(study_id, "assistant", text, route)
             return {"type": "text", "text": text, "message_id": mid, "route": route}
-        _pending[study_id] = q
+        _pending[study_id] = {
+            "question": q, "stage": "attempt",
+            "first_selected": None, "first_explanation": None, "attempt_id": None,
+        }
         student_view = {k: q[k] for k in
                         ("format", "stem", "options", "chapter", "domain", "topic", "bloom_level")}
         mid = db.log_message(study_id, "assistant", json.dumps(student_view), route)
-        instruction = (
-            "Choose the ONE best answer, then briefly tell me why you chose it."
-            if q["format"] == "single"
-            else "Choose the THREE best responses, then briefly tell me why."
-        )
+        instruction = "Choose the ONE best answer, then briefly tell me why you chose it."
         return {
             "type": "question",
             "question": student_view,
@@ -60,21 +68,79 @@ async def handle_chat(study_id: str, message: str) -> dict:
 
 
 async def handle_answer(study_id: str, selected: list[int], explanation: str) -> dict:
-    q = _pending.get(study_id)
-    if not q:
+    pending = _pending.get(study_id)
+    if not pending or pending.get("stage") not in ("attempt", "reconsider"):
         text = "I don't have an open question for you — say \"quiz me\" to get one."
         mid = db.log_message(study_id, "assistant", text, "coach")
         return {"type": "text", "text": text, "message_id": mid, "route": "coach"}
 
+    q = pending["question"]
     db.log_message(
         study_id, "student",
         json.dumps({"selected": selected, "explanation": explanation}),
     )
-    result = await agents.coach(q, selected, explanation)
-    db.log_attempt(study_id, q, selected, explanation, result["verdict"], result.get("bloom_level"))
-    _pending.pop(study_id, None)
 
+    if pending["stage"] == "attempt":
+        correct = sorted(selected) == sorted(q["correct"])
+        if not correct:
+            # Wrong first attempt: Scaffold, then let them Reconsider — no
+            # answer reveal yet.
+            hint = await agents.scaffold(q, selected, explanation)
+            pending["stage"] = "reconsider"
+            pending["first_selected"] = selected
+            pending["first_explanation"] = explanation
+            mid = db.log_message(study_id, "assistant", hint, "scaffold")
+            return {
+                "type": "scaffold", "hint": hint,
+                "question": {k: q[k] for k in
+                             ("format", "stem", "options", "chapter", "domain", "topic", "bloom_level")},
+                "instruction": "Reconsider, then choose the ONE best answer and tell me why.",
+                "message_id": mid, "route": "scaffold",
+            }
+        # Correct on the first attempt: go straight to Feedback.
+        return await _finish_with_feedback(study_id, pending, selected, explanation, used_scaffold=False)
+
+    # stage == "reconsider": this is the second attempt, after a scaffold hint.
+    return await _finish_with_feedback(
+        study_id, pending, selected, explanation, used_scaffold=True,
+        first_selected=pending["first_selected"], first_explanation=pending["first_explanation"],
+    )
+
+
+async def _finish_with_feedback(
+    study_id: str, pending: dict, selected: list[int], explanation: str,
+    used_scaffold: bool, first_selected: list[int] | None = None,
+    first_explanation: str | None = None,
+) -> dict:
+    q = pending["question"]
+    result = await agents.coach(q, selected, explanation, first_selected, first_explanation)
+    attempt_id = db.log_attempt(
+        study_id, q, selected, explanation, result["verdict"],
+        result.get("bloom_level"), used_scaffold,
+    )
     result["correct_options"] = q["correct"]
     result["rationales"] = q.get("rationales", [])
+    result["reasoning_principle"] = q.get("reasoning_principle", "")
+    result["reflection_prompt"] = REFLECTION_PROMPT
+
+    pending["stage"] = "reflect"
+    pending["attempt_id"] = attempt_id
+
     mid = db.log_message(study_id, "assistant", json.dumps(result), "coach")
-    return {"type": "coaching", **result, "message_id": mid, "route": "coach"}
+    return {"type": "feedback", **result, "message_id": mid, "route": "coach"}
+
+
+async def handle_reflect(study_id: str, reflection: str) -> dict:
+    pending = _pending.get(study_id)
+    if not pending or pending.get("stage") != "reflect" or not pending.get("attempt_id"):
+        text = "There's nothing waiting on a reflection right now — say \"quiz me\" to start a new case."
+        mid = db.log_message(study_id, "assistant", text, "reflect")
+        return {"type": "text", "text": text, "message_id": mid, "route": "reflect"}
+
+    db.log_message(study_id, "student", reflection, "reflect")
+    db.update_reflection(pending["attempt_id"], reflection)
+    _pending.pop(study_id, None)
+
+    text = "Thanks for reflecting on that — it's logged. Ready for another case whenever you are."
+    mid = db.log_message(study_id, "assistant", text, "reflect")
+    return {"type": "text", "text": text, "message_id": mid, "route": "reflect"}

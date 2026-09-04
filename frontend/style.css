@@ -176,6 +176,28 @@ button { font-family: var(--sans); cursor: pointer; }
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--pine); margin-bottom: 3px;
 }
+.principle {
+  font-size: 13.5px; background: var(--note); border-left: 3px solid var(--pine);
+  padding: 8px 10px; margin: 8px 0;
+}
+
+/* ---------- Reflect card ---------- */
+.reflect-card textarea {
+  width: 100%; min-height: 56px; padding: 8px 10px; font-size: 14px;
+  font-family: var(--sans); border: 1px solid var(--rule); background: var(--paper);
+  resize: vertical; margin-top: 8px;
+}
+
+/* ---------- Dictation (speech-to-text) ---------- */
+.mic-btn {
+  background: none; border: 1px solid var(--rule); color: var(--muted);
+  font-size: 15px; line-height: 1; padding: 6px 10px; margin-top: 6px;
+}
+.mic-btn:hover { border-color: var(--pine); color: var(--pine); }
+.mic-btn.listening {
+  border-color: var(--wrong); color: var(--wrong); background: #fbecea;
+}
+#composer .mic-btn { margin-top: 0; }
 
 /* ---------- Progress card ---------- */
 .pstats { display: flex; gap: 24px; margin: 10px 0 14px; flex-wrap: wrap; }

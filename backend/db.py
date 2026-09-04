@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS attempts (
   selected TEXT NOT NULL,        -- JSON list of chosen indices
   explanation TEXT,              -- the student's stated reasoning
   verdict TEXT,                  -- correct / partly / incorrect
-  bloom_level TEXT               -- Bloom's level the explanation demonstrated
+  bloom_level TEXT,              -- Bloom's level the explanation demonstrated
+  used_scaffold INTEGER DEFAULT 0, -- 1 if the student needed a scaffold hint + reconsider
+  reflection TEXT                -- the student's closing reflection, if given
 );
 CREATE TABLE IF NOT EXISTS feedback (
   message_id TEXT PRIMARY KEY,
@@ -66,10 +68,15 @@ def _conn():
 def init() -> None:
     with _conn() as con:
         con.executescript(_SCHEMA)
-        try:
-            con.execute("ALTER TABLE attempts ADD COLUMN bloom_level TEXT")
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        for stmt in (
+            "ALTER TABLE attempts ADD COLUMN bloom_level TEXT",
+            "ALTER TABLE attempts ADD COLUMN used_scaffold INTEGER DEFAULT 0",
+            "ALTER TABLE attempts ADD COLUMN reflection TEXT",
+        ):
+            try:
+                con.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def register_student(study_id: str) -> None:
@@ -98,14 +105,16 @@ def log_attempt(
     explanation: str,
     verdict: str,
     bloom_level: str | None = None,
-) -> None:
+    used_scaffold: bool = False,
+) -> str:
+    aid = uuid.uuid4().hex
     with _conn() as con:
         con.execute(
             "INSERT INTO attempts (id, study_id, ts, question_json, chapter, domain, "
-            "fmt, selected, explanation, verdict, bloom_level) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "fmt, selected, explanation, verdict, bloom_level, used_scaffold) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                uuid.uuid4().hex,
+                aid,
                 study_id,
                 time.time(),
                 json.dumps(question),
@@ -116,8 +125,15 @@ def log_attempt(
                 explanation,
                 verdict,
                 bloom_level,
+                1 if used_scaffold else 0,
             ),
         )
+    return aid
+
+
+def update_reflection(attempt_id: str, text: str) -> None:
+    with _conn() as con:
+        con.execute("UPDATE attempts SET reflection=? WHERE id=?", (text, attempt_id))
 
 
 def log_feedback(study_id: str, message_id: str, rating: int) -> None:
@@ -149,7 +165,8 @@ def stats(study_id: str) -> dict:
     """Aggregate stats used by the Progress agent and the dashboard."""
     with _conn() as con:
         rows = con.execute(
-            "SELECT chapter, domain, fmt, verdict, bloom_level, ts FROM attempts WHERE study_id=?",
+            "SELECT chapter, domain, fmt, verdict, bloom_level, used_scaffold, "
+            "reflection, ts FROM attempts WHERE study_id=?",
             (study_id,),
         ).fetchall()
 
@@ -178,6 +195,10 @@ def stats(study_id: str) -> dict:
         "by_chapter": bucket("chapter"),
         "by_domain": bucket("domain"),
         "by_bloom_level": bucket("bloom_level"),
+        "independent_rate": (
+            round(sum(1 for r in rows if not r["used_scaffold"]) / total, 2) if total else None
+        ),
+        "reflections_completed": sum(1 for r in rows if r["reflection"]),
     }
 
 

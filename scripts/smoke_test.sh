@@ -30,14 +30,27 @@ check "chat routes explain" '"route":"explain"' "$R"
 
 R=$(curl -s -X POST localhost:8000/api/chat $J -d '{"study_id":"S-TEST1","message":"quiz me on chapter 1"}')
 check "quiz returns question card" '"type":"question"' "$R"
+check "question is single-format only" '"format":"single"' "$R"
 if echo "$R" | grep -q '"correct"'; then echo "FAIL  answer leak: correct indices sent to client"; FAIL=1; else echo "PASS  no answer leak"; fi
 
+# Wrong first attempt (correct answer for the pacing question is index 1) -> Scaffold, no reveal.
+R=$(curl -s -X POST localhost:8000/api/answer $J -d '{"study_id":"S-TEST1","selected":[0],"explanation":"re-reading every item seems most thorough"}')
+check "wrong attempt returns scaffold hint" '"type":"scaffold"' "$R"
+if echo "$R" | grep -q '"correct_options"'; then echo "FAIL  answer leak: scaffold step revealed the answer"; FAIL=1; else echo "PASS  scaffold does not reveal the answer"; fi
+
+# Reconsider: second (correct) attempt -> full Feedback.
 R=$(curl -s -X POST localhost:8000/api/answer $J -d '{"study_id":"S-TEST1","selected":[1],"explanation":"no penalty for guessing so use remaining time to review"}')
-check "answer returns coaching" '"type":"coaching"' "$R"
-check "coaching includes verdict" '"verdict":"correct"' "$R"
+check "reconsidered attempt returns feedback" '"type":"feedback"' "$R"
+check "feedback includes verdict" '"verdict":"correct"' "$R"
+check "feedback includes reasoning principle" '"reasoning_principle"' "$R"
+check "feedback includes reflection prompt" '"reflection_prompt"' "$R"
+
+# Reflect step.
+R=$(curl -s -X POST localhost:8000/api/reflect $J -d '{"study_id":"S-TEST1","reflection":"I will re-read the case for the prioritization keyword before answering."}')
+check "reflection accepted" '"type":"text"' "$R"
 
 R=$(curl -s -X POST localhost:8000/api/answer $J -d '{"study_id":"S-TEST1","selected":[0],"explanation":"x"}')
-check "second answer without open question handled" "quiz me" "$R"
+check "answer without open question handled" "quiz me" "$R"
 
 MSGID=$(curl -s -X POST localhost:8000/api/chat $J -d '{"study_id":"S-TEST1","message":"hello"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['message_id'])")
 R=$(curl -s -X POST localhost:8000/api/feedback $J -d "{\"study_id\":\"S-TEST1\",\"message_id\":\"$MSGID\",\"rating\":1}")
@@ -45,6 +58,7 @@ check "feedback logged" '"ok":true' "$R"
 
 R=$(curl -s localhost:8000/api/progress/S-TEST1)
 check "progress stats count attempt" '"total_attempts":1' "$R"
+check "progress tracks reflections completed" '"reflections_completed":1' "$R"
 
 R=$(curl -s -X POST localhost:8000/api/chat $J -d '{"study_id":"S-TEST1","message":"how am I doing?"}')
 check "progress route" '"type":"progress"' "$R"
@@ -56,7 +70,7 @@ python3 - << 'PYEOF'
 import sqlite3
 con = sqlite3.connect("data/aiprls.sqlite3")
 print("INFO  messages logged in DB:", con.execute("select count(*) from messages").fetchone()[0])
-print("INFO  attempt row:", con.execute("select verdict, explanation from attempts").fetchall())
+print("INFO  attempt row:", con.execute("select verdict, explanation, used_scaffold, reflection from attempts").fetchall())
 print("INFO  feedback rows:", con.execute("select rating from feedback").fetchall())
 PYEOF
 

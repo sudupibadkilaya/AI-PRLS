@@ -14,6 +14,7 @@ MOCK_LLM = os.getenv("AIPRLS_MOCK_LLM", "0") == "1"   # run the UI without GPUs
 GEN = {
     "router":   {"temperature": 0.0, "max_tokens": 200},
     "question": {"temperature": 0.8, "max_tokens": 1600},
+    "scaffold": {"temperature": 0.5, "max_tokens": 150},
     "coach":    {"temperature": 0.4, "max_tokens": 900},
     "explain":  {"temperature": 0.5, "max_tokens": 900},
     "progress": {"temperature": 0.4, "max_tokens": 500},

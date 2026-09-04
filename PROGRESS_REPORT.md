@@ -33,30 +33,42 @@ The app currently runs in **mock mode** (canned AI responses). Connecting the re
 
 ---
 
-## Update — 2026-08-14: Bloom's-taxonomy Socratic scaffolding
+## Update — 2026-08-30: Question format overhaul + Attempt-Scaffold-Reconsider-Respond-Feedback-Reflect loop
 
-Responding directly to the collaborator's review of the tutor instructions
-(feedback + Bloom's Taxonomy question-stem chart): questions and coaching
-now explicitly use Socratic prompting tied to Bloom's cognitive levels
-(Knowledge → Comprehension → Application → Analysis → Synthesis →
-Evaluation).
+Responding directly to Prof. Dumitrescu's review of the prototype against the NBCOT
+exam format (email 2026-08-25) and her attached study-plan PPT.
 
-- New companion doc `companion_docs/02_blooms_taxonomy_ladder.md` grounds the
-  ladder and question stems in the team's own material.
-- **Question Maker** now tags each generated item with a `bloom_level` and
-  varies level (mostly Application/Analysis, occasional Knowledge/
-  Comprehension or Synthesis/Evaluation), shown on the question card.
-- **Reasoning Coach** now diagnoses the Bloom's level a student's explanation
-  demonstrates and ends with one targeted Socratic question aimed at the
-  next level up, instead of a generic "try another question" line.
-- **Explainer** ("I don't get it") now aims its opening guiding question at
-  the level just above the student's apparent confusion, and closes with one
-  Socratic follow-up question one level higher than the explanation given.
-- Practice attempts now log `bloom_level`; the progress view shows an
-  accuracy-by-cognitive-level chart alongside chapter/domain.
-- Scope note: this pass is single-shot (one Socratic nudge per response),
-  not a persistent multi-turn ladder state machine — a decision made to keep
-  this shippable before the pilot; flagged as a possible V2 deepening.
+- **Question format**: dropped the six-option "pick 3" scenario format entirely.
+  Every item is now case-based, single best answer (4 options), and ends in a
+  prioritization question — "What should the OT do FIRST?", "MOST appropriate?",
+  "MOST important?", or "NEXT?" — matching the real exam's traditional item style
+  and the keyword strategy taught in her PPT's test-day-strategies slide.
+- **Domain weighting** in the Question Maker's guidance now matches the exam
+  blueprint from her PPT exactly (Evaluation & Assessment 23%, Analysis/
+  Interpretation/Planning 23%, Selection & Management of Intervention 38%,
+  Competency & Practice Management 16%).
+- **New core loop — the most important ask**: Attempt → Scaffold → Reconsider →
+  Respond → Feedback → Reflect. A wrong first attempt no longer reveals the answer
+  — the tutor gives a Socratic scaffold hint that redirects to the relevant case
+  detail, the student reconsiders and answers again, and only then does full
+  feedback reveal the correct answer, why the other options are weaker, and the
+  professional-reasoning principle behind the decision. A correct first attempt
+  skips straight to Feedback. Every attempt closes with a Reflect step (free-text,
+  dictation-enabled) before the next question.
+- **Progress tracking groundwork**: attempts now log whether scaffolding was
+  needed and whether a reflection was submitted; the progress view shows
+  "solved independently" and "reflections completed" alongside accuracy —
+  a first step toward the broader reasoning/scaffolding/reflection dimensions
+  she described as a future direction.
+- **Dictation**: added a mic button (Web Speech API) next to every free-text box
+  — quiz reasoning, reflection, and the main chat composer — as an alternative to
+  typing, not a replacement. Degrades gracefully (no button) in browsers without
+  speech recognition support.
+- **Activity B/C note for the team**: Activity B (Explain a concept) is fully
+  functional, not a stub — Socratic guiding question, explanation, Socratic
+  follow-up. Activity C (study plan builder) remains genuinely not built, by
+  design, deferred from V1 scope; her PPT's 6-week study plan structure is a
+  ready-made blueprint for scoping it as the next follow-up.
 
 ## Alignment with the prototype plan
 

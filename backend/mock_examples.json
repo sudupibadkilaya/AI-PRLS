@@ -20,6 +20,7 @@
         "Blank answers score zero; unanswered items waste the guessing odds.",
         "The tutorial cannot be reopened and would consume exam time."
       ],
+      "reasoning_principle": "When time is limited, protect your ability to attempt every item before polishing any single one — an unanswered item always scores zero, a guess never does.",
       "textbook_pointer": "Review the time-management strategies in Chapter 1 of your TherapyEd book."
     },
     {
@@ -28,20 +29,21 @@
       "chapter": 3,
       "topic": "wrist splint fit",
       "bloom_level": "analysis",
-      "stem": "A client recovering from a distal radius fracture is fitted with a wrist cock-up splint. The client reports the splint feels tight across the palm and limits finger movement. What is the MOST likely underlying cause?",
+      "stem": "A client recovering from a distal radius fracture is fitted with a wrist cock-up splint and reports the splint feels tight across the palm and limits finger movement. What should the OT do FIRST?",
       "options": [
-        "The splint's trim line extends too far distally, crossing the distal palmar crease",
-        "The client is wearing the splint for too many hours per day",
-        "The strap closest to the wrist is fastened too loosely",
-        "The client has not been given a home exercise program"
+        "Trim the splint's palmar edge back to just proximal to the distal palmar crease",
+        "Tell the client to wear the splint fewer hours per day",
+        "Tighten the strap closest to the wrist",
+        "Refer the client to a hand surgeon before making any changes"
       ],
       "correct": [0],
       "rationales": [
-        "Correct — trim lines that cross the distal palmar crease block MCP flexion and pinch the palm.",
-        "Wear schedule affects skin tolerance, not finger range of motion.",
-        "A loose proximal strap would cause the splint to slide, not restrict fingers.",
-        "Exercise programs address strength and motion over time, not an immediate fit problem."
+        "Correct — a trim line crossing the distal palmar crease blocks MCP flexion; trimming it back restores finger movement while keeping wrist support.",
+        "Wear schedule affects skin tolerance, not a fit problem that is blocking motion right now.",
+        "A tighter proximal strap would not change how far the palmar edge extends.",
+        "This is a routine fit adjustment within OT scope — it doesn't need a surgical referral first."
       ],
+      "reasoning_principle": "Fix the specific design feature causing the functional limitation before changing wear time or escalating to another provider.",
       "textbook_pointer": "Review splint trim-line landmarks in the orthotics section of Chapter 3."
     },
     {
@@ -50,46 +52,44 @@
       "chapter": 5,
       "topic": "standardized assessment",
       "bloom_level": "comprehension",
-      "stem": "Why do occupational therapists use standardized assessments rather than relying only on informal observation when evaluating a new client?",
+      "stem": "An OT is evaluating a new client and has limited time before the first treatment session. What information is MOST important to gather during this initial evaluation?",
       "options": [
-        "Standardized assessments take less time to administer than observation",
-        "They provide normed scores that can be compared across administrations and evaluators",
-        "They remove the need for clinical reasoning during evaluation",
-        "They are required before every single treatment session"
+        "A brief informal impression of the client's mood that day",
+        "Standardized, normed measures of the client's current occupational performance",
+        "A full family history going back multiple generations",
+        "The client's opinion of their previous therapist"
       ],
       "correct": [1],
       "rationales": [
-        "Standardized tools often take longer, not less time, than brief observation.",
-        "Correct — norms and standard procedures make scores comparable over time and between clinicians.",
-        "Standardized tools support, but never replace, clinical reasoning.",
-        "Standardized assessments are used at key points, not before every session."
+        "Mood can be noted, but it isn't the priority baseline data the plan of care depends on.",
+        "Correct — standardized, normed measures give a comparable baseline to guide goals and track progress.",
+        "Extended family history is rarely relevant to establishing an occupational therapy baseline.",
+        "This doesn't inform the current client's functional baseline."
       ],
+      "reasoning_principle": "When evaluation time is limited, prioritize the data that will anchor goal-setting and let you measure change later — not incidental details.",
       "textbook_pointer": "Review the purpose of standardized vs. non-standardized assessment in Chapter 5."
     },
     {
-      "format": "scenario",
+      "format": "single",
       "domain": 2,
       "chapter": 2,
       "topic": "discharge planning",
-      "bloom_level": "synthesis",
-      "stem": "A client with a recent hip replacement is preparing for discharge home alone. Which THREE actions BEST support a safe transition?",
+      "bloom_level": "analysis",
+      "stem": "A client with a recent hip replacement is preparing for discharge home alone in three days. What should the OT do NEXT?",
       "options": [
-        "Recommend a raised toilet seat and shower chair for the bathroom",
-        "Instruct the client to resume driving immediately after discharge",
         "Coordinate a home safety evaluation before the discharge date",
+        "Instruct the client to resume driving immediately after discharge",
         "Tell the client to avoid all household tasks indefinitely",
-        "Provide adaptive equipment training for dressing and bathing",
         "Discontinue therapy once the client can walk with a walker"
       ],
-      "correct": [0, 2, 4],
+      "correct": [0],
       "rationales": [
-        "Correct — bathroom equipment reduces fall risk under hip precautions.",
+        "Correct — a home safety evaluation identifies hazards while there's still time to address them before discharge.",
         "Driving clearance typically requires physician sign-off, not immediate resumption.",
-        "Correct — a home evaluation identifies hazards before the client returns.",
         "Avoiding all tasks indefinitely undermines independence and is not standard guidance.",
-        "Correct — adaptive equipment training supports safe ADL performance within precautions.",
-        "Walking with a walker doesn't confirm ADL safety; discharge should reflect broader function."
+        "Walking with a walker doesn't confirm ADL safety at home; discharge readiness needs broader evidence."
       ],
+      "reasoning_principle": "With a fixed discharge date approaching, act on the step that closes the biggest safety gap while there is still time to fix it.",
       "textbook_pointer": "Review discharge planning and home safety recommendations in Chapter 2."
     },
     {
@@ -98,41 +98,44 @@
       "chapter": 4,
       "topic": "SOAP note structure",
       "bloom_level": "knowledge",
-      "stem": "In a SOAP note, which section documents the client's own reported symptoms and concerns?",
-      "options": ["Subjective", "Objective", "Assessment", "Plan"],
+      "stem": "During a session, a client says their hand \"feels weak today,\" and the OT measures grip strength at 5 lbs below the client's baseline. Which detail should the OT document in the Subjective section of the SOAP note?",
+      "options": [
+        "The client's own statement that their hand feels weak today",
+        "The 5-lb grip strength measurement",
+        "The OT's interpretation of why strength dropped",
+        "The plan for next session's grip strengthening activities"
+      ],
       "correct": [0],
       "rationales": [
-        "Correct — Subjective captures the client's own statements and concerns.",
-        "Objective records measurable, observed data such as range of motion or test scores.",
-        "Assessment is the therapist's clinical interpretation of the data.",
-        "Plan outlines the next steps and goals going forward."
+        "Correct — Subjective captures the client's own words and reported experience.",
+        "A measured value belongs in Objective, not Subjective.",
+        "Clinical interpretation belongs in Assessment, not Subjective.",
+        "Next steps belong in Plan, not Subjective."
       ],
+      "reasoning_principle": "Sort each detail by its source: what the client says is Subjective, what you measure or observe is Objective — mixing them up weakens the clinical record.",
       "textbook_pointer": "Review SOAP note structure and terminology in Chapter 4."
     },
     {
-      "format": "scenario",
+      "format": "single",
       "domain": 3,
       "chapter": 6,
       "topic": "hemiparesis dressing retraining",
-      "bloom_level": "evaluation",
-      "stem": "A client with left-sided hemiparesis after a stroke is working on independent dressing. Compared with the alternatives below, which THREE approaches are the BEST fit for this stage of intervention?",
+      "bloom_level": "application",
+      "stem": "A client with left-sided hemiparesis after a stroke is beginning independent dressing practice and struggles to get their affected arm through a sleeve. What is the MOST appropriate next action?",
       "options": [
-        "Practice a consistent dressing sequence that starts with the affected arm",
-        "Have a caregiver fully dress the client to conserve the client's energy",
-        "Use adaptive equipment such as a button hook only if standard technique is insufficient",
-        "Grade the task by starting with looser, larger-opening clothing",
-        "Delay dressing practice until strength has fully returned",
-        "Instruct the client to dress the unaffected side first every time"
+        "Have the client practice dressing the affected arm first, every time, before the unaffected side",
+        "Have a caregiver fully dress the client to avoid frustration",
+        "Introduce a button hook and other adaptive equipment right away",
+        "Pause dressing practice until the client's strength has fully returned"
       ],
-      "correct": [0, 2, 3],
+      "correct": [0],
       "rationales": [
-        "Correct — dressing the affected limb first prevents it from being trapped in the garment.",
+        "Correct — dressing the affected limb first prevents it from being trapped in the garment and builds the habit early.",
         "Full caregiver dressing removes the practice opportunity the client needs to regain independence.",
-        "Correct — adaptive equipment is added only when needed, preserving the least restrictive approach.",
-        "Correct — grading task difficulty supports skill-building without overwhelming the client.",
-        "Waiting for full strength return delays functional practice and independence unnecessarily.",
-        "Dressing the unaffected side first can trap the affected limb and is not the recommended sequence."
+        "Adaptive equipment is added only once standard technique proves insufficient, not as the first move.",
+        "Waiting for full strength return delays functional practice and independence unnecessarily."
       ],
+      "reasoning_principle": "Start with the least restrictive approach that still builds the skill directly, and add equipment or assistance only once that proves insufficient.",
       "textbook_pointer": "Review hemiparesis dressing retraining techniques in Chapter 6."
     }
   ],
@@ -141,6 +144,7 @@
     {
       "keywords": ["exam pacing", "pacing", "guessing"],
       "bloom_level": "application",
+      "scaffold_hint": "Look again at what happens to an item you leave blank versus one where you guess — does the exam actually treat those two the same way? Take another look at the case with that in mind, and pick again.",
       "feedback": "Your reasoning connects the time constraint to a concrete decision, which is exactly the kind of judgment this section rewards. Naming that guessing carries no penalty, and using that to protect review time, shows you understand the strategy — not just the rule.",
       "trap": null,
       "next_step": "Now think about a client whose pacing struggles come from test anxiety rather than a skill gap — what is the underlying cause you'd need to identify before choosing a coaching strategy for them?",
@@ -149,6 +153,7 @@
     {
       "keywords": ["splint", "cock-up", "trim line", "wrist"],
       "bloom_level": "analysis",
+      "scaffold_hint": "Re-read exactly where the client says the tightness is — the palm, not the wrist itself. Which part of the splint's shape sits directly over that spot? Take another look at the case with that in mind, and pick again.",
       "feedback": "You correctly linked the tight, restrictive feeling to the splint's fit rather than to wear time or exercise. That's the right level of reasoning — tracing a symptom back to a specific design feature instead of a general habit.",
       "trap": "overreading the stem and adding facts that are not there",
       "next_step": "How would you adjust the splint pattern itself so it still supports the wrist without crossing the palmar crease?",
@@ -157,6 +162,7 @@
     {
       "keywords": ["standardized", "assessment", "norm"],
       "bloom_level": "comprehension",
+      "scaffold_hint": "Think about what the OT will need weeks from now to prove the client actually improved — which of these options gives you something comparable over time? Take another look at the case with that in mind, and pick again.",
       "feedback": "You explained why standardized tools matter in your own words, which shows real comprehension rather than just recalling the term \"standardized.\"",
       "trap": null,
       "next_step": "How would you apply that reasoning to choose between two standardized assessments for a specific client — what would make one a better fit than the other?",
@@ -164,8 +170,9 @@
     },
     {
       "keywords": ["discharge", "hip", "home safety"],
-      "bloom_level": "synthesis",
-      "feedback": "You combined equipment, environment, and skills training into one plan instead of treating them separately — that's the synthesis this kind of question is testing.",
+      "bloom_level": "analysis",
+      "scaffold_hint": "The client has a fixed discharge date coming up fast. Which of these options is the one thing that has to happen BEFORE that date to catch problems while there's still time to fix them? Take another look at the case with that in mind, and pick again.",
+      "feedback": "You correctly weighed what actually needs to happen before this specific discharge date, rather than defaulting to a general safety habit.",
       "trap": "missing a safety-first option",
       "next_step": "How would you change this plan if the client lived alone with no caregiver support at all — what would you prioritize differently?",
       "textbook_pointer": "Review discharge planning guidance in Chapter 2."
@@ -173,20 +180,24 @@
     {
       "keywords": ["soap", "subjective", "documentation"],
       "bloom_level": "knowledge",
-      "feedback": "You recalled the definition correctly. The next step is connecting that definition to a real note, not just naming it.",
+      "scaffold_hint": "Look at the two pieces of information in the case separately — one came directly from the client's own words, the other from something the OT measured. Which one is Subjective? Take another look at the case with that in mind, and pick again.",
+      "feedback": "You correctly separated what the client said from what was measured. The next step is applying that distinction to a real note, not just naming it.",
       "trap": null,
-      "next_step": "Given a client who says their pain is a 6/10 but you also measure their grip strength at 20 lbs, which detail goes in Subjective and which goes in Objective — and why does that distinction matter for your Assessment?",
+      "next_step": "Given this same client, which detail goes in Objective, and how would that combination shape your Assessment?",
       "textbook_pointer": "Review SOAP note structure in Chapter 4."
     },
     {
       "keywords": ["hemiparesis", "dressing", "stroke"],
-      "bloom_level": "evaluation",
-      "feedback": "You picked the approaches that build independence over time rather than the ones that remove the challenge entirely — that's a strong judgment call, not just a correct guess.",
+      "bloom_level": "application",
+      "scaffold_hint": "Think about which option keeps the client actively doing the task themselves, versus which ones remove the challenge or delay it entirely. Take another look at the case with that in mind, and pick again.",
+      "feedback": "You picked the approach that builds independence directly rather than the ones that remove the challenge or delay it.",
       "trap": "choosing an assessment when the stage calls for intervention (or vice versa)",
       "next_step": "If this client plateaus at this level of dressing independence after several sessions, how would you decide whether to keep grading the same task or introduce adaptive equipment sooner than usual?",
       "textbook_pointer": "Review hemiparesis retraining techniques in Chapter 6."
     }
   ],
+
+  "scaffold_fallback": "Take another look at the case stem — which detail did you weigh most heavily when you chose your answer, and is there another detail in the case that matters just as much? Reconsider with that in mind, and pick again.",
 
   "explanations": [
     {
@@ -219,14 +230,14 @@
 
   "progress_notes": [
     "You're building a solid practice history across a mix of domains, and your recent attempts show steady follow-through on the reasoning prompts, not just picking an answer. Keep pushing on the domains where accuracy is lower — that's where a little focused review pays off fastest. Rereading the chapter sections tied to your most recent misses is a good next step before your next practice set.",
-    "Your practice pattern shows you're willing to attempt the harder scenario-format items, not just the single-answer ones, which mirrors the real exam well. Where you're strongest, a quick review is enough. Where accuracy dips, slow down and re-explain your reasoning out loud before you check the answer key.",
-    "You're still early in building a full picture of your strengths, but the pattern so far suggests your reasoning is more consistent than your first-attempt accuracy — a sign that talking through the \"why\" is helping. Keep practicing at this pace, and revisit the textbook sections tied to any domain where you've seen more than one miss."
+    "Your practice pattern shows real engagement with the reasoning prompts, which mirrors the real exam well. Where you're strongest, a quick review is enough. Where accuracy dips, slow down and re-explain your reasoning out loud before you check the answer key.",
+    "You're still early in building a full picture of your strengths, but the pattern so far suggests your reasoning is more consistent than your first-attempt accuracy — a sign that talking through the \"why,\" and working through the hints when you get one, is helping. Keep practicing at this pace, and revisit the textbook sections tied to any domain where you've seen more than one miss."
   ],
 
   "chat_replies": [
     "Hi! I'm your AI-PRLS study partner. You can ask me to quiz you on a chapter, explain a concept you're stuck on, or show your progress — just tell me what you'd like to do.",
-    "Good to see you. Want to jump into a practice question, work through something you're finding confusing, or check how your practice is trending so far?",
-    "You're welcome — that's what I'm here for. Ready for another practice question, or is there a concept you'd like to go over?",
-    "This tool is part of a research pilot to help OT students prepare for the NBCOT exam. I can quiz you, explain concepts, and track your practice — just ask."
+    "Good to see you. Want to jump into a practice case, work through something you're finding confusing, or check how your practice is trending so far?",
+    "You're welcome — that's what I'm here for. Ready for another case, or is there a concept you'd like to go over?",
+    "This tool is part of a research pilot to help OT students prepare for the NBCOT exam. I can quiz you with practice cases, explain concepts, and track your practice — just ask."
   ]
 }
