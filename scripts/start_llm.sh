@@ -9,14 +9,10 @@
 # The 14B model in bf16 needs ~28GB for weights; TP=2 spreads that across two
 # cards and leaves room for a 16k context and healthy batching. No fine-tuning
 # is used anywhere — prompts + RAG carry the pedagogy.
-
 set -euo pipefail
-
 MODEL="${AIPRLS_LLM_MODEL:-Qwen/Qwen2.5-14B-Instruct}"
-
-CUDA_VISIBLE_DEVICES=0,1 vllm serve "$MODEL" \
-  --tensor-parallel-size 2 \
+CUDA_VISIBLE_DEVICES=0 vllm serve "$MODEL" \
+  --tensor-parallel-size 1 \
   --max-model-len 16384 \
   --gpu-memory-utilization 0.90 \
-  --port 8001 \
-  --disable-log-requests
+  --port 8001
