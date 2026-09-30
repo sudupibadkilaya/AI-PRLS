@@ -4,7 +4,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 rm -f data/aiprls.sqlite3
-AIPRLS_MOCK_LLM=1 python app.py > /tmp/aiprls_test.log 2>&1 &
+AIPRLS_MOCK_LLM=1 AIPRLS_PORT=8000 AIPRLS_SESSION_LENGTH=3 AIPRLS_INSTRUCTOR_KEY=smoke-test-key \
+  python app.py > /tmp/aiprls_test.log 2>&1 &
 PID=$!
 trap "kill $PID 2>/dev/null" EXIT
 sleep 4
@@ -65,6 +66,62 @@ check "progress route" '"type":"progress"' "$R"
 
 R=$(curl -s localhost:8000/ | head -20)
 check "frontend served" "AI-PRLS Study Partner" "$R"
+
+# --- Chapter session (length 3 for the test) + instructor review/coaching ---
+python3 - << 'PYEOF' || FAIL=1
+import json, urllib.request, urllib.error
+BASE = "http://localhost:8000"
+def call(path, body=None, key=None):
+    req = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Content-Type": "application/json", **({"X-Instructor-Key": key} if key else {})})
+    try:
+        with urllib.request.urlopen(req) as r: return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e: return e.code, {}
+ok = True
+def check(name, cond):
+    global ok
+    print(("PASS  " if cond else "FAIL  ") + name); ok &= bool(cond)
+
+S = "S-SESS1"
+call("/api/login", {"study_id": S, "consent": True})
+_, r = call("/api/session/start", {"study_id": S, "chapter": 2})
+check("session starts with question 1 of 3", r.get("type") == "question" and r["session"] == {"number": 1, "total": 3, "chapter": 2})
+check("session question has no answer leak", "correct" not in json.dumps(r.get("question", {})))
+for n in (1, 2, 3):
+    # answer until feedback (option 0, then 1 if scaffolded)
+    _, a = call("/api/answer", {"study_id": S, "selected": [0], "explanation": "because"})
+    if a["type"] == "scaffold":
+        _, a = call("/api/answer", {"study_id": S, "selected": [1], "explanation": "reconsidered"})
+    check(f"question {n} feedback carries session counter", a["type"] == "feedback" and a["session"]["number"] == n)
+    _, r = call("/api/reflect", {"study_id": S, "reflection": f"reflection {n}"})
+    if n < 3:
+        check(f"reflection {n} acknowledged with Cristina's wording",
+              r.get("text") == "Thanks for reflecting on that \u2014 it's logged. Ready for another case whenever you are.")
+        _, r = call("/api/session/next", {"study_id": S})
+        check(f"next serves question {n+1} of 3", r.get("session", {}).get("number") == n + 1)
+check("last reflection returns summative feedback", r.get("type") == "session_summary")
+check("summary covers only this session", r.get("report", {}).get("total_attempts") == 3
+      and r["report"].get("reflections_completed") == 3)
+
+code, _ = call("/api/instructor/students", key="wrong")
+check("instructor API rejects bad key", code == 401)
+code, _ = call("/api/instructor/students")
+check("instructor API rejects missing key", code == 401)
+K = "smoke-test-key"
+_, st = call("/api/instructor/students", key=K)
+check("instructor sees students", any(x["study_id"] == S for x in st))
+_, at = call(f"/api/instructor/attempts?study_id={S}", key=K)
+check("instructor sees reasoning + reflections", len(at) == 3 and all(x["reflection"] and x["explanation"] for x in at))
+_, ss = call(f"/api/instructor/sessions?study_id={S}", key=K)
+check("instructor sees session summary", len(ss) == 1 and ss[0]["summary"])
+_, n = call("/api/instructor/coach", {"study_id": S, "note": "Ask what the client's safety needs are first."}, key=K)
+check("instructor can add a coaching note", n.get("ok"))
+_, r = call("/api/chat", {"study_id": S, "message": "quiz me"})
+check("student receives the coaching note once", r.get("instructor_note", "").startswith("Ask what"))
+_, r = call("/api/chat", {"study_id": S, "message": "hello"})
+check("coaching note not repeated", "instructor_note" not in r)
+raise SystemExit(0 if ok else 1)
+PYEOF
 
 python3 - << 'PYEOF'
 import sqlite3

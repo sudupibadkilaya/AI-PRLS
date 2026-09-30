@@ -19,7 +19,12 @@ GEN = {
     "explain":  {"temperature": 0.5, "max_tokens": 900},
     "progress": {"temperature": 0.4, "max_tokens": 500},
     "chat":     {"temperature": 0.5, "max_tokens": 400},
+    "summary":  {"temperature": 0.4, "max_tokens": 900},
 }
+
+# --- Chapter practice sessions ("select a chapter, 20 questions, summary") ---
+SESSION_LENGTH = int(os.getenv("AIPRLS_SESSION_LENGTH", "20"))
+CHAPTERS = int(os.getenv("AIPRLS_CHAPTERS", "16"))   # TherapyEd chapters offered
 
 # --- RAG over the team's own companion documents -----------------------------
 COMPANION_DIR = ROOT / "companion_docs"
@@ -33,3 +38,9 @@ CHUNK_CHARS = 1200
 DB_PATH = ROOT / "data" / "aiprls.sqlite3"
 HOST = os.getenv("AIPRLS_HOST", "0.0.0.0")
 PORT = int(os.getenv("AIPRLS_PORT", "8000"))
+
+# --- Instructor review ------------------------------------------------------
+# Shared secret the instructor types on the "Instructor access" screen.
+# Set it on the server (never commit it):  export AIPRLS_INSTRUCTOR_KEY='...'
+# Empty = instructor view disabled.
+INSTRUCTOR_KEY = os.getenv("AIPRLS_INSTRUCTOR_KEY", "")

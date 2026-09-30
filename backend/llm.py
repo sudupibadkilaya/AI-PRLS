@@ -108,6 +108,38 @@ def _mock_explain(messages: list[dict]) -> str:
     return _EXAMPLES["explain_fallback"]
 
 
+def _mock_summary(messages: list[dict]) -> str:
+    """Template summary built from the real session numbers (mock mode only)."""
+    last = messages[-1]["content"] if messages else ""
+    try:
+        r = extract_json(last.split("\n", 1)[1])
+    except (ValueError, IndexError, json.JSONDecodeError):
+        return "Session complete. (Mock mode: summary unavailable.)"
+    n, c = r.get("total_attempts", 0), r.get("total_correct", 0)
+    indep = sum(1 for q in r.get("questions", []) if not q.get("used_scaffold"))
+    refl = r.get("reflections_completed", 0)
+    weakest = None
+    for d, v in (r.get("by_domain") or {}).items():
+        rate = v["correct"] / v["attempts"] if v["attempts"] else 1
+        if weakest is None or rate < weakest[1]:
+            weakest = (d, rate)
+    ch = r.get("chapter")
+    return (
+        f"Overall — You answered {n} questions and got {c} correct; {indep} of them "
+        f"you worked through without needing a hint.\n\n"
+        "Professional reasoning — Your explanations show you are reading the case "
+        "for client context. Keep checking the prioritization keyword (FIRST, MOST, "
+        "NEXT) before choosing — that is where most scaffold hints were needed.\n\n"
+        f"Reflections — You completed {refl} reflection(s); keep connecting each "
+        "one to the next case.\n\n"
+        "Next steps — "
+        + (f"Revisit NBCOT domain {weakest[0]}, where accuracy was lowest. " if weakest else "")
+        + (f"Reread the relevant sections of Chapter {ch} in your TherapyEd book. " if ch else "")
+        + "Then start another session when you're ready.\n\n"
+        "(Mock mode: this summary is a template filled with your real session numbers.)"
+    )
+
+
 async def chat(role: str, system: str, messages: list[dict]) -> str:
     """Send a chat completion request. `role` picks generation settings."""
     if config.MOCK_LLM:
@@ -123,6 +155,8 @@ async def chat(role: str, system: str, messages: list[dict]) -> str:
             return _mock_explain(messages)
         if role == "progress":
             return _next_example("progress", _EXAMPLES["progress_notes"])
+        if role == "summary":
+            return _mock_summary(messages)
         return _next_example("chat", _EXAMPLES["chat_replies"])
 
     gen = config.GEN.get(role, config.GEN["chat"])

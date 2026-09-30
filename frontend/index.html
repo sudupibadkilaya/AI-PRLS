@@ -27,6 +27,37 @@
       </label>
       <button id="login-btn">Enter</button>
       <p id="login-error" class="error" hidden></p>
+      <p class="instructor-link"><button id="instructor-link" class="linklike" type="button">Instructor access</button></p>
+    </div>
+  </div>
+
+  <!-- Instructor review -->
+  <div id="instructor-screen" hidden>
+    <div id="instructor-login" class="login-card">
+      <h1>Instructor Review</h1>
+      <p class="subtitle">Review students' reasoning and reflections, and coach them through the AI tutor.</p>
+      <label for="instructor-key">Instructor key</label>
+      <input id="instructor-key" type="password" autocomplete="off" />
+      <button id="instructor-login-btn">Sign in</button>
+      <p id="instructor-error" class="error" hidden></p>
+      <p class="instructor-link"><button id="instructor-back" class="linklike" type="button">Back to student sign-in</button></p>
+    </div>
+
+    <div id="instructor-dash" hidden>
+      <header class="idash-head">
+        <h2>Instructor Review</h2>
+        <button id="instructor-refresh" class="linklike" type="button">Refresh</button>
+        <button id="instructor-logout" class="linklike" type="button">Sign out</button>
+      </header>
+      <div class="idash-body">
+        <section class="idash-list">
+          <p class="nav-label">Students</p>
+          <div id="student-list"></div>
+        </section>
+        <section class="idash-detail" id="student-detail">
+          <p class="muted">Select a student to see their answers, reasoning and reflections.</p>
+        </section>
+      </div>
     </div>
   </div>
 
@@ -38,6 +69,11 @@
         <p>Study Partner</p>
       </div>
       <nav>
+        <p class="nav-label">Chapter practice</p>
+        <div class="session-picker">
+          <select id="chapter-select" aria-label="Chapter"></select>
+          <button id="session-start-btn" class="nav-btn primary">Start 20-question session</button>
+        </div>
         <p class="nav-label">Start something</p>
         <button class="nav-btn" data-prompt="Quiz me with a practice question.">Practice a question</button>
         <button class="nav-btn" data-prompt="I want to understand a concept — let me tell you which.">Ask about a concept</button>
@@ -55,6 +91,11 @@
     </aside>
 
     <main id="chat-pane">
+      <div id="session-banner" hidden>
+        <span id="session-label"></span>
+        <div class="session-track"><div id="session-fill"></div></div>
+        <button id="session-end-btn" class="linklike">End session &amp; see summary</button>
+      </div>
       <div id="messages"></div>
       <form id="composer">
         <textarea id="input" rows="1"
@@ -65,5 +106,6 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="instructor.js"></script>
 </body>
 </html>

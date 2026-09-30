@@ -7,6 +7,19 @@ from .. import db, llm, rag
 from . import prompts
 
 
+def _guidance_block(guidance: list[str] | None) -> str:
+    """Instructor coaching notes, passed to the AI so it can coach 'through' them."""
+    if not guidance:
+        return ""
+    notes = "\n".join(f"- {g}" for g in guidance)
+    return (
+        "\n\nINSTRUCTOR GUIDANCE — the student's faculty instructor reviewed their "
+        "work and asked you to coach them this way. Follow it where it is relevant "
+        "to this case; you may say \"your instructor suggested...\". It never "
+        "overrides the answer key or the rules above.\n" + notes + "\n"
+    )
+
+
 async def route(message: str, history: list[dict]) -> dict:
     """Classify the student's message. Falls back to 'chat' on any parse issue."""
     convo = history[-4:] + [{"role": "user", "content": message}]
@@ -20,18 +33,38 @@ async def route(message: str, history: list[dict]) -> dict:
     return {"route": "chat", "chapter": None, "topic": "general"}
 
 
-async def make_question(study_id: str, chapter: int | None, topic: str) -> dict:
-    """Generate one original NBCOT-style item, grounded in companion notes."""
+async def make_question(
+    study_id: str,
+    chapter: int | None,
+    topic: str,
+    avoid_topics: list[str] | None = None,
+    position: tuple[int, int] | None = None,
+    guidance: list[str] | None = None,
+) -> dict:
+    """Generate one original NBCOT-style item, grounded in companion notes.
+
+    avoid_topics: topics already used (e.g. earlier in this chapter session).
+    position: (n, total) when the item is part of a chapter session, so the
+    maker can vary domains and difficulty across the set."""
     query = f"chapter {chapter} {topic}" if chapter else topic
     context = rag.context_block(query)
-    recent = db.recent_topics(study_id)
+    recent = avoid_topics if avoid_topics is not None else db.recent_topics(study_id)
+    session_note = ""
+    if position:
+        n, total = position
+        session_note = (
+            f"This is question {n} of {total} in a practice session on this chapter. "
+            "Cover a different scenario and sub-topic from the earlier questions, "
+            "and vary the NBCOT domain across the session.\n"
+        )
     user_msg = (
         f"Requested chapter: {chapter or 'any'}\n"
-        f"Requested topic: {topic}\n\n"
+        f"Requested topic: {topic}\n{session_note}\n"
         f"Companion notes (the study team's own material):\n{context}\n\n"
         f"Topics of this student's recent questions (avoid repeating these "
         f"scenarios): {', '.join(recent) if recent else 'none yet'}\n\n"
         "Write one new case-based, single-best-answer question now."
+        + _guidance_block(guidance)
     )
     raw = await llm.chat("question", prompts.QUESTION_MAKER, [{"role": "user", "content": user_msg}])
     q = llm.extract_json(raw)
@@ -56,7 +89,8 @@ def _validate_question(q: dict) -> None:
         q["reasoning_principle"] = "Prioritize the option that best matches this client's current stage and safety needs."
 
 
-async def scaffold(question: dict, selected: list[int], explanation: str) -> str:
+async def scaffold(question: dict, selected: list[int], explanation: str,
+                   guidance: list[str] | None = None) -> str:
     """Socratic hint after a wrong first attempt. Never reveals the answer."""
     user_msg = (
         f"QUESTION JSON (for your reference only — do not reveal the correct "
@@ -64,6 +98,7 @@ async def scaffold(question: dict, selected: list[int], explanation: str) -> str
         f"STUDENT'S WRONG SELECTION (zero-based index): {selected}\n"
         f"STUDENT'S EXPLANATION OF WHY: {explanation or '(none given)'}\n\n"
         "Give the Socratic hint now."
+        + _guidance_block(guidance)
     )
     return await llm.chat("scaffold", prompts.SCAFFOLD, [{"role": "user", "content": user_msg}])
 
@@ -74,6 +109,7 @@ async def coach(
     explanation: str,
     first_selected: list[int] | None = None,
     first_explanation: str | None = None,
+    guidance: list[str] | None = None,
 ) -> dict:
     """Give full feedback on the student's FINAL answer, and above all their
     reasoning. If a scaffolded first attempt is passed, the feedback
@@ -93,6 +129,7 @@ async def coach(
         f"STUDENT'S FINAL EXPLANATION OF WHY: {explanation or '(none given)'}\n\n"
         f"Scoring computed by the system: {verdict_hint}. Use this verdict.\n"
         "Give full feedback now."
+        + _guidance_block(guidance)
     )
     raw = await llm.chat("coach", prompts.REASONING_COACH, [{"role": "user", "content": user_msg}])
     try:
@@ -112,10 +149,12 @@ async def coach(
         }
 
 
-async def explain(message: str, topic: str, history: list[dict]) -> str:
+async def explain(message: str, topic: str, history: list[dict],
+                  guidance: list[str] | None = None) -> str:
     context = rag.context_block(topic)
     user_msg = (
-        f"Companion notes (the study team's own material):\n{context}\n\n"
+        f"Companion notes (the study team's own material):\n{context}\n"
+        f"{_guidance_block(guidance)}\n"
         f"The student asks: {message}"
     )
     convo = history[-4:] + [{"role": "user", "content": user_msg}]
@@ -136,6 +175,22 @@ async def progress_note(study_id: str) -> tuple[str, dict]:
         [{"role": "user", "content": f"Student statistics JSON:\n{json.dumps(s, indent=2)}"}],
     )
     return raw, s
+
+
+async def session_summary(report: dict, guidance: list[str] | None = None) -> str:
+    """Summative feedback for one chapter practice session."""
+    # Keep the payload compact: trim long free-text fields.
+    compact = dict(report)
+    compact["questions"] = [
+        {**q, "explanation": q["explanation"][:300], "reflection": q["reflection"][:300]}
+        for q in report.get("questions", [])
+    ]
+    return await llm.chat(
+        "summary",
+        prompts.SESSION_SUMMARY,
+        [{"role": "user", "content": f"Session report JSON:\n{json.dumps(compact, indent=2)}"
+          + _guidance_block(guidance)}],
+    )
 
 
 async def small_talk(message: str, history: list[dict]) -> str:

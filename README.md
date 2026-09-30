@@ -112,6 +112,46 @@ responses — useful for frontend work and IRB demos on a laptop.
 
 Quick check: `bash scripts/smoke_test.sh` (expects mock mode; all tests should PASS).
 
+## Chapter sessions and instructor review
+
+Added in response to Prof. Dumitrescu's Sep 20 feedback.
+
+**Chapter sessions (student).** In the sidebar, pick a chapter and click
+**Start 20-question session**. Each question runs the full
+Attempt → Scaffold → Reconsider → Feedback → Reflect loop and shows
+"Question N of 20". After each reflection the tutor replies *"Thanks for
+reflecting on that — it's logged. Ready for another case whenever you are."*
+and offers a **Next case** button. After question 20 (or **End session &
+see summary**) the student gets summative feedback covering **only that
+session**: score, how many questions were solved without a hint, reflections,
+a per-question table, and a written summary of their reasoning patterns and
+next steps. Sessions are stored in the `sessions` table; each attempt records
+its `session_id`.
+
+**Instructor review and coaching.** Set a shared key on the server, then
+restart the app:
+
+```bash
+export AIPRLS_INSTRUCTOR_KEY='choose-a-long-random-key'   # never commit this
+```
+
+On the sign-in page, click **Instructor access** and enter the key. The
+instructor can:
+
+- see every student (study ID), with how many questions each has answered,
+  their accuracy and their reflections;
+- open a student to read each case, the option they chose next to the answer
+  key, their stated reasoning, whether they needed a hint, and their
+  reflection, plus the summary of each chapter session;
+- **coach through the AI:** write guidance such as "prompt her to check
+  safety before choosing an intervention". The tutor follows active notes in
+  that student's questions, hints, feedback, explanations and session
+  summaries. The student sees each new note once, labelled "Coaching from
+  your instructor". Notes can be retired at any time.
+
+The instructor API (`/api/instructor/*`) requires the `X-Instructor-Key`
+header. If `AIPRLS_INSTRUCTOR_KEY` is unset, the instructor view is disabled.
+
 ## Configuration
 
 Everything is an environment variable (defaults in `backend/config.py`):
@@ -123,6 +163,9 @@ Everything is an environment variable (defaults in `backend/config.py`):
 | `AIPRLS_EMBED_DEVICE` | `cpu` | set `cuda:2` to use the spare GPU |
 | `AIPRLS_MOCK_LLM` | `0` | `1` = run without any LLM server |
 | `AIPRLS_PORT` | `8000` | web app port |
+| `AIPRLS_SESSION_LENGTH` | `20` | questions per chapter session |
+| `AIPRLS_CHAPTERS` | `16` | chapters offered in the chapter picker |
+| `AIPRLS_INSTRUCTOR_KEY` | *(empty)* | instructor sign-in key; empty disables the instructor view |
 
 Swapping the model is one variable — the pedagogy (prompts + companion docs)
 does not change, which is the point.
@@ -136,6 +179,8 @@ SQLite file at `data/aiprls.sqlite3`:
 - `attempts` — each answered question with the student's selections, their
   stated reasoning, and the verdict
 - `feedback` — helpful / not-helpful ratings per tutor message
+- `sessions` — chapter sessions (chapter, length, completion, summative feedback)
+- `coaching_notes` — instructor guidance per student (active / retired, when seen)
 
 Export for analysis with e.g.
 `sqlite3 -header -csv data/aiprls.sqlite3 "select * from attempts;" > attempts.csv`.

@@ -32,8 +32,59 @@ $("#login-btn").addEventListener("click", async () => {
 
 $("#logout-btn").addEventListener("click", () => location.reload());
 
+/* ---------- chapter sessions (select a chapter, N questions, summary) ---------- */
+let sessionLength = 20;
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  sessionLength = c.session_length;
+  const sel = $("#chapter-select");
+  for (let i = 1; i <= c.chapters; i++) {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = "Chapter " + i;
+    sel.appendChild(o);
+  }
+  $("#session-start-btn").textContent = `Start ${sessionLength}-question session`;
+}).catch(() => {});
+
+$("#session-start-btn").addEventListener("click", () => {
+  const chapter = parseInt($("#chapter-select").value, 10) || null;
+  addStudent(`Start a ${sessionLength}-question session on Chapter ${chapter}.`);
+  callApi("/api/session/start", { study_id: studyId, chapter });
+});
+$("#session-end-btn").addEventListener("click", () => {
+  if (!confirm("End this session now and see your summary?")) return;
+  callApi("/api/session/end", { study_id: studyId });
+});
+
+function updateBanner(session) {
+  const banner = $("#session-banner");
+  if (!session) { banner.hidden = true; return; }
+  banner.hidden = false;
+  $("#session-label").textContent =
+    `Chapter ${session.chapter ?? "–"} · Question ${session.number} of ${session.total}`;
+  $("#session-fill").style.width = Math.round((session.number / session.total) * 100) + "%";
+}
+
+async function callApi(url, body) {
+  const pending = addThinking();
+  setBusy(true);
+  try {
+    const res = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    pending.remove();
+    renderResponse(data);
+  } catch {
+    pending.remove();
+    addTutorText("Something went wrong reaching the server. Please try again.");
+  } finally {
+    setBusy(false);
+  }
+}
+
 /* ---------- sidebar shortcuts ---------- */
-document.querySelectorAll(".nav-btn").forEach((b) =>
+document.querySelectorAll(".nav-btn[data-prompt]").forEach((b) =>
   b.addEventListener("click", () => sendMessage(b.dataset.prompt))
 );
 
@@ -164,11 +215,105 @@ async function sendMessage(text) {
 function setBusy(v) { $("#send-btn").disabled = v; }
 
 function renderResponse(data) {
+  if (data.instructor_note) renderInstructorNote(data.instructor_note);
+  if ("session" in data) updateBanner(data.session);
   if (data.type === "question") return renderQuestion(data);
   if (data.type === "scaffold") return renderScaffold(data);
   if (data.type === "feedback") return renderFeedback(data);
   if (data.type === "progress") return renderProgress(data);
+  if (data.type === "session_summary") return renderSessionSummary(data);
   addTutorText(data.text, data.message_id);
+  // After a reflection inside a session: offer the next case.
+  if (data.session && data.route === "reflect") renderNextButton(data.session);
+  if (data.retry_next) renderNextButton(null, "Try again");
+}
+
+function renderNextButton(session, label) {
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  const row = document.createElement("div");
+  row.className = "next-row";
+  const btn = document.createElement("button");
+  btn.className = "qsubmit";
+  btn.style.marginTop = "0";
+  btn.textContent = label || `Next case → Question ${session.number + 1} of ${session.total}`;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    callApi("/api/session/next", { study_id: studyId });
+  });
+  row.appendChild(btn);
+  b.appendChild(row);
+  scrollDown();
+}
+
+function renderInstructorNote(note) {
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  const box = document.createElement("div");
+  box.className = "instructor-note";
+  box.innerHTML = `<div class="socratic-label">Coaching from your instructor</div>`;
+  const t = document.createElement("div");
+  t.textContent = note;
+  box.appendChild(t);
+  b.appendChild(box);
+}
+
+/* ---------- end-of-session summary ---------- */
+function renderSessionSummary(data) {
+  if (data.ack) addTutorText(data.ack, data.ack_message_id);
+  updateBanner(null);
+  const r = data.report || {};
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  b.classList.add("summary-card");
+
+  const h = document.createElement("h3");
+  h.textContent = (data.ended_early ? "Session ended early — summary" : "Session complete — summary")
+    + (r.chapter ? ` (Chapter ${r.chapter})` : "");
+  b.appendChild(h);
+
+  if (r.total_attempts) {
+    const stats = document.createElement("div");
+    stats.className = "pstats";
+    const pct = (x) => (x != null ? Math.round(x * 100) + "%" : "–");
+    stats.innerHTML = `
+      <div class="pstat"><div class="num">${r.total_correct}/${r.total_attempts}</div><div class="lab">correct</div></div>
+      <div class="pstat"><div class="num">${pct(r.accuracy)}</div><div class="lab">accuracy</div></div>
+      <div class="pstat"><div class="num">${pct(r.independent_rate)}</div><div class="lab">solved without a hint</div></div>
+      <div class="pstat"><div class="num">${r.scaffolded_then_correct || 0}</div><div class="lab">correct after a hint</div></div>
+      <div class="pstat"><div class="num">${r.reflections_completed || 0}</div><div class="lab">reflections</div></div>`;
+    b.appendChild(stats);
+  }
+
+  const t = document.createElement("div");
+  t.className = "summary-text";
+  t.textContent = data.text;
+  b.appendChild(t);
+
+  if (r.questions && r.questions.length) {
+    const head = document.createElement("div");
+    head.className = "pstats-heading";
+    head.textContent = "Question by question";
+    b.appendChild(head);
+    const table = document.createElement("table");
+    table.className = "qlist";
+    table.innerHTML = "<tr><th>#</th><th>Topic</th><th>Result</th><th>Hint used</th><th>Reasoning level</th></tr>";
+    r.questions.forEach((q) => {
+      const tr = document.createElement("tr");
+      const cells = [q.number, q.topic, q.verdict === "correct" ? "Correct" : "Not quite",
+                     q.used_scaffold ? "Yes" : "No", BLOOM_LABELS[q.bloom_level] || q.bloom_level || "–"];
+      cells.forEach((c, i) => {
+        const td = document.createElement("td");
+        td.textContent = c;
+        if (i === 2) td.className = q.verdict === "correct" ? "ok" : "no";
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+    b.appendChild(table);
+  }
+  b.parentElement.appendChild(feedbackBar(data.message_id));
+  scrollDown();
 }
 
 /* ---------- question card ---------- */
@@ -195,15 +340,21 @@ function renderQuestion(data, hintText) {
 
   const card = document.createElement("div");
   card.className = "qcard";
+  if (data.session) {
+    const chip = document.createElement("div");
+    chip.className = "qcount";
+    chip.textContent = `Question ${data.session.number} of ${data.session.total}`;
+    card.appendChild(chip);
+  }
 
   const meta = [];
   if (q.chapter) meta.push("Chapter " + q.chapter);
   if (q.domain) meta.push("Domain " + q.domain + " \u00b7 " + (DOMAINS[q.domain] || ""));
   if (q.bloom_level) meta.push(BLOOM_LABELS[q.bloom_level] || q.bloom_level);
   meta.push("Single best answer");
-  card.innerHTML = `<div class="qmeta">${meta.join("  \u00b7  ")}</div>
+  card.insertAdjacentHTML("beforeend", `<div class="qmeta">${meta.join("  \u00b7  ")}</div>
                     <div class="qstem"></div>
-                    <div class="qinstr">${data.instruction}</div>`;
+                    <div class="qinstr">${data.instruction}</div>`);
   card.querySelector(".qstem").textContent = q.stem;
 
   q.options.forEach((opt, i) => {
