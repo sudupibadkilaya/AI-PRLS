@@ -67,6 +67,15 @@
     loadStudents();
   }
   $("#instructor-login-btn").addEventListener("click", signIn);
+
+  // Used by the student login when the instructor key is typed as a Study ID.
+  window.openInstructorDashboard = (key) => {
+    $("#login-screen").hidden = true;
+    $("#app").hidden = true;
+    $("#instructor-screen").hidden = false;
+    $("#instructor-key").value = key;
+    signIn();
+  };
   $("#instructor-key").addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
 
   /* ---------- student list ---------- */

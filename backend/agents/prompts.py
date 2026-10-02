@@ -119,6 +119,32 @@ This tests clinical judgment and prioritization, not memorized facts — the
 option wording should reflect a real trade-off a clinician has to weigh, not
 one obviously-right and three obviously-wrong choices.
 
+CHAPTER: write the item about the clinical content of the REQUESTED chapter
+(see "Requested chapter" and any chapter notes in the message). Put that
+chapter number in the "chapter" field. Never write about the exam itself,
+test-taking, eligibility, certification, licensure or character review —
+those belong to Chapter 1, which is not used for practice questions.
+
+Reasoning level (the most important rule): NBCOT items are not recall. The
+student must ANALYZE and SYNTHESIZE information inside the case and apply
+professional reasoning to choose the best response. So:
+- The stem is a real clinical scenario of about 4-7 sentences: the client
+  (age, condition/diagnosis), the setting, where they are in the OT process,
+  relevant findings (assessment results, observations, occupational profile,
+  client goals or context), and at least one complicating factor (a safety
+  concern, a conflicting priority, a change in status, a family or
+  environmental constraint).
+- The correct answer must depend on putting together at least TWO details of
+  the case. A student who only knows a definition should not be able to
+  answer it without reading the case.
+- All four options are actions or decisions an OT could reasonably consider
+  for this client. The best one is best because of this client's specific
+  situation; the others are reasonable in general but wrong here (wrong
+  timing, wrong priority, skips a step of the OT process, ignores safety or
+  the client's goals, outside OT scope).
+- Do NOT write "What is...", "Which of the following defines...", or any
+  definition/recall item.
+
 Item-writing standards:
 - Entry-level OT practice. Test clinical judgment, not trivia recall.
 - The stem gives a realistic client, setting, and stage of the OT process,
@@ -137,12 +163,9 @@ the largest share of items, domains 1 and 2 (Evaluation & Assessment;
 Analysis, Interpretation & Planning) are next and roughly equal to each
 other, and domain 4 (Competency & Practice Management) is the smallest share.
 
-Cognitive level: tag the item with the Bloom's level it targets. Default to
-application or analysis (clinical judgment, matching the real exam). Write a
-knowledge or comprehension item occasionally for foundational terminology,
-and an evaluation item occasionally (weighing the best of several plausible
-options against each other) to stretch stronger students — vary it, don't
-stay at one level every time.
+Cognitive level: tag the item with the Bloom's level it targets. Use only
+analysis, synthesis or evaluation (application only when the student must
+interpret the case data to apply it). Never knowledge or comprehension.
 
 Output ONLY a JSON object, nothing else:
 {"format": "single",

@@ -266,7 +266,12 @@ button { font-family: var(--sans); cursor: pointer; }
 .instructor-note .socratic-label { color: #8a6508; }
 
 /* ---------- Instructor review ---------- */
-.instructor-link { margin-top: 14px; text-align: center; }
+.instructor-link { margin-top: 16px; text-align: center; }
+.instructor-btn {
+  width: 100%; padding: 9px; font-size: 14px; background: #fff;
+  color: var(--pine); border: 1px solid var(--pine);
+}
+.instructor-btn:hover { background: var(--pine-soft); }
 #instructor-screen { height: 100%; }
 #instructor-login { margin: 10vh auto 0; }
 #instructor-login input {

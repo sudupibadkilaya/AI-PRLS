@@ -29,7 +29,7 @@ check "chat routes small talk" '"route":"chat"' "$R"
 R=$(curl -s -X POST localhost:8000/api/chat $J -d '{"study_id":"S-TEST1","message":"I dont understand splinting"}')
 check "chat routes explain" '"route":"explain"' "$R"
 
-R=$(curl -s -X POST localhost:8000/api/chat $J -d '{"study_id":"S-TEST1","message":"quiz me on chapter 1"}')
+R=$(curl -s -X POST localhost:8000/api/chat $J -d '{"study_id":"S-TEST1","message":"quiz me on chapter 3"}')
 check "quiz returns question card" '"type":"question"' "$R"
 check "question is single-format only" '"format":"single"' "$R"
 if echo "$R" | grep -q '"correct"'; then echo "FAIL  answer leak: correct indices sent to client"; FAIL=1; else echo "PASS  no answer leak"; fi

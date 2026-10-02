@@ -25,6 +25,10 @@ GEN = {
 # --- Chapter practice sessions ("select a chapter, 20 questions, summary") ---
 SESSION_LENGTH = int(os.getenv("AIPRLS_SESSION_LENGTH", "20"))
 CHAPTERS = int(os.getenv("AIPRLS_CHAPTERS", "16"))   # TherapyEd chapters offered
+# Chapter 1 is an overview of the exam process, not clinical content, so it is
+# not offered for practice questions (Dr. Dumitrescu, Oct 1).
+FIRST_PRACTICE_CHAPTER = int(os.getenv("AIPRLS_FIRST_PRACTICE_CHAPTER", "2"))
+MAX_SESSION_LENGTH = 50
 
 # --- RAG over the team's own companion documents -----------------------------
 COMPANION_DIR = ROOT / "companion_docs"

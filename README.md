@@ -151,6 +151,20 @@ instructor can:
 
 The instructor API (`/api/instructor/*`) requires the `X-Instructor-Key`
 header. If `AIPRLS_INSTRUCTOR_KEY` is unset, the instructor view is disabled.
+Typing the instructor key into the Study ID box also opens the instructor view.
+
+**Chapters (updated Oct 2 after Prof. Dumitrescu's feedback).** Chapter 1 is an
+overview of the exam process, so practice questions use Chapters 2–16 only.
+Students can pick a chapter in the sidebar or type a request such as
+"10 questions from Chapter 14", which starts a numbered 10-question session.
+Questions stay on the requested chapter: companion notes written for another
+chapter (detected from each note's first heading, e.g.
+`# Chapter map — TherapyEd Chapter 14: <title>`) are not used for it. The
+Question Maker writes case-based items that require analysis and synthesis of
+the case, not recall. Add one chapter-map note per chapter to
+`companion_docs/` and run `python scripts/build_index.py` to improve each
+chapter's questions. Team-only resources must not be committed to this
+public repository.
 
 ## Configuration
 

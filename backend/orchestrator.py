@@ -4,6 +4,7 @@ can render (plain text, a question card, or a progress card)."""
 from __future__ import annotations
 
 import json
+import re
 
 from . import agents, config, db
 
@@ -85,11 +86,21 @@ async def handle_chat(study_id: str, message: str) -> dict:
     route = decision["route"]
 
     if route == "quiz":
+        chapter, count = _parse_quiz_request(message, decision.get("chapter"))
+        if chapter is not None and chapter < config.FIRST_PRACTICE_CHAPTER:
+            text = (f"Chapter {chapter} is an overview of the exam process, so it isn't used "
+                    f"for practice questions. Pick a chapter from {config.FIRST_PRACTICE_CHAPTER} "
+                    f"to {config.CHAPTERS} — for example, \"10 questions from Chapter 14\".")
+            mid = db.log_message(study_id, "assistant", text, route)
+            return {"type": "text", "text": text, "message_id": mid, "route": route}
+        if chapter is not None and chapter > config.CHAPTERS:
+            chapter = None
+        # "10 questions from chapter 14" -> a real numbered session.
+        if count:
+            return await handle_session_start(study_id, chapter, count)
         if study_id in _sessions:
             return await handle_session_next(study_id)
-        return await _serve_question(
-            study_id, decision.get("chapter"), decision.get("topic") or "general"
-        )
+        return await _serve_question(study_id, chapter, decision.get("topic") or "general")
 
     if route == "progress":
         note, stats = await agents.progress_note(study_id)
@@ -196,6 +207,26 @@ async def handle_reflect(study_id: str, reflection: str) -> dict:
 
 
 # --- chapter practice sessions ------------------------------------------------
+
+_COUNT_RE = re.compile(r"\b(\d{1,2})\s*(?:\w+\s+){0,2}?(?:questions?|qs|cases?|items?|mcqs?)\b", re.I)
+_CHAPTER_RE = re.compile(r"\b(?:chapter|ch\.?)\s*(\d{1,2})\b", re.I)
+
+
+def _parse_quiz_request(message: str, routed_chapter) -> tuple[int | None, int | None]:
+    """Read "10 questions from chapter 14" directly from the student's words
+    (more reliable than the router for numbers). Returns (chapter, count)."""
+    m = _CHAPTER_RE.search(message)
+    chapter = int(m.group(1)) if m else (routed_chapter if isinstance(routed_chapter, int) else None)
+    count = None
+    for m in _COUNT_RE.finditer(message):
+        # don't mistake "chapter 14 questions" for 14 questions
+        before = message[:m.start()].rstrip().lower()
+        if before.endswith(("chapter", "ch", "ch.")):
+            continue
+        count = max(1, min(int(m.group(1)), config.MAX_SESSION_LENGTH))
+        break
+    return chapter, count
+
 
 async def handle_session_start(study_id: str, chapter: int | None, total: int | None = None) -> dict:
     """Start a chapter session and serve question 1."""

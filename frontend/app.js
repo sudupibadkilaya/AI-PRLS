@@ -10,19 +10,28 @@ $("#login-btn").addEventListener("click", async () => {
   const err = $("#login-error");
   err.hidden = true;
   if (id.length < 3) { err.textContent = "Please enter your study ID."; err.hidden = false; return; }
-  if (!consent) { err.textContent = "Please confirm consent to continue."; err.hidden = false; return; }
   const res = await fetch("/api/login", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ study_id: id, consent }),
   });
-  if (!res.ok) { err.textContent = "Could not sign in — please try again."; err.hidden = false; return; }
+  if (!res.ok) {
+    err.textContent = !consent ? "Please confirm consent to continue."
+                               : "Could not sign in — please try again.";
+    err.hidden = false; return;
+  }
+  const info = await res.json();
+  if (info.instructor && window.openInstructorDashboard) {
+    // The instructor key was typed into the Study ID box: go to the instructor view.
+    $("#study-id").value = "";
+    return window.openInstructorDashboard(id);
+  }
   studyId = id;
   $("#login-screen").hidden = true;
   $("#app").hidden = false;
   $("#student-label").textContent = "Signed in as " + id;
   addTutorText(
     "Welcome. I'm your study partner for NBCOT preparation. You can ask me to " +
-    "quiz you (\u201cquiz me on chapter 1\u201d), explain a concept, or show your " +
+    "quiz you (\u201c10 questions from chapter 14\u201d), explain a concept, or show your " +
     "progress. I'll often ask why you chose an answer \u2014 explaining your " +
     "reasoning is where the learning happens. For full details on any topic, " +
     "keep your TherapyEd book nearby."
@@ -37,7 +46,7 @@ let sessionLength = 20;
 fetch("/api/config").then((r) => r.json()).then((c) => {
   sessionLength = c.session_length;
   const sel = $("#chapter-select");
-  for (let i = 1; i <= c.chapters; i++) {
+  for (let i = c.first_chapter || 1; i <= c.chapters; i++) {
     const o = document.createElement("option");
     o.value = i; o.textContent = "Chapter " + i;
     sel.appendChild(o);

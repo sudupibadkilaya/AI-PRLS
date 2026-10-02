@@ -162,9 +162,54 @@ def retrieve(query: str, k: int | None = None) -> list[dict]:
     ]
 
 
-def context_block(query: str) -> str:
-    """Format retrieved chunks for insertion into an agent prompt."""
-    hits = retrieve(query)
+_source_chapter_cache: dict[str, int | None] = {}
+
+
+def source_chapter(source: str) -> int | None:
+    """Which TherapyEd chapter a companion doc is about, read from its first
+    heading (e.g. "# Chapter map — TherapyEd Chapter 14: ..."). None = general
+    doc that applies to every chapter (exam structure, Bloom's ladder, ...)."""
+    if source not in _source_chapter_cache:
+        chapter = None
+        path = config.COMPANION_DIR / source
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith("#"):
+                    m = re.search(r"chapter\s*(\d+)", line, re.IGNORECASE)
+                    chapter = int(m.group(1)) if m else None
+                    break
+        _source_chapter_cache[source] = chapter
+    return _source_chapter_cache[source]
+
+
+def chapter_title(chapter: int) -> str | None:
+    """Title from a chapter-map heading like "TherapyEd Chapter 14: Title"."""
+    for path in sorted(config.COMPANION_DIR.glob("*.md")):
+        if source_chapter(path.name) != chapter:
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("#"):
+                m = re.search(r"chapter\s*\d+\s*[:\u2014-]\s*(.+?)(?:\(|$)", line, re.IGNORECASE)
+                if m:
+                    return m.group(1).strip()
+                break
+    return None
+
+
+def has_chapter_notes(chapter: int) -> bool:
+    return any(source_chapter(p.name) == chapter
+               for p in config.COMPANION_DIR.glob("*.md"))
+
+
+def context_block(query: str, chapter: int | None = None) -> str:
+    """Format retrieved chunks for insertion into an agent prompt.
+
+    With `chapter`, notes written for a DIFFERENT chapter are dropped, so a
+    Chapter 14 question is never steered by the Chapter 1 notes."""
+    k = config.TOP_K
+    hits = retrieve(query, k * 4 if chapter else k)
+    if chapter:
+        hits = [h for h in hits if source_chapter(h["source"]) in (None, chapter)][:k]
     if not hits:
         return "(no companion notes retrieved — rely on entry-level OT knowledge)"
     lines = [f"--- from {h['source']} ---\n{h['text']}" for h in hits]

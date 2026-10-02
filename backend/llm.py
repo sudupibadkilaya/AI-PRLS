@@ -65,7 +65,7 @@ def _mock_route(messages: list[dict]) -> str:
     """Keyword routing so every flow can be demoed without a GPU."""
     last = messages[-1]["content"].lower() if messages else ""
     if any(w in last for w in ("quiz", "question", "practice", "test me", "drill")):
-        return '{"route": "quiz", "chapter": 1, "topic": "certification"}'
+        return '{"route": "quiz", "chapter": null, "topic": "general"}'
     if any(w in last for w in ("progress", "how am i doing", "stats", "study next")):
         return '{"route": "progress", "chapter": null, "topic": "general"}'
     if any(w in last for w in ("hello", "hi", "hey", "thanks", "what can you")):

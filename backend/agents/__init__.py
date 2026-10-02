@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .. import db, llm, rag
+from .. import config, db, llm, rag
 from . import prompts
 
 
@@ -47,8 +47,17 @@ async def make_question(
     position: (n, total) when the item is part of a chapter session, so the
     maker can vary domains and difficulty across the set."""
     query = f"chapter {chapter} {topic}" if chapter else topic
-    context = rag.context_block(query)
+    context = rag.context_block(query, chapter=chapter)
     recent = avoid_topics if avoid_topics is not None else db.recent_topics(study_id)
+    if chapter:
+        title = rag.chapter_title(chapter)
+        chapter_line = f"Chapter {chapter}" + (f" ({title})" if title else "")
+        if not rag.has_chapter_notes(chapter):
+            chapter_line += (" — the team has no chapter notes for it yet, so base the case "
+                             "on the entry-level OT practice content this chapter covers")
+    else:
+        chapter_line = (f"any chapter from {config.FIRST_PRACTICE_CHAPTER} to "
+                        f"{config.CHAPTERS} (never Chapter 1)")
     session_note = ""
     if position:
         n, total = position
@@ -58,7 +67,7 @@ async def make_question(
             "and vary the NBCOT domain across the session.\n"
         )
     user_msg = (
-        f"Requested chapter: {chapter or 'any'}\n"
+        f"Requested chapter: {chapter_line}\n"
         f"Requested topic: {topic}\n{session_note}\n"
         f"Companion notes (the study team's own material):\n{context}\n\n"
         f"Topics of this student's recent questions (avoid repeating these "
@@ -66,10 +75,20 @@ async def make_question(
         "Write one new case-based, single-best-answer question now."
         + _guidance_block(guidance)
     )
-    raw = await llm.chat("question", prompts.QUESTION_MAKER, [{"role": "user", "content": user_msg}])
-    q = llm.extract_json(raw)
-    _validate_question(q)
-    return q
+    last_error: Exception | None = None
+    for _ in range(3):  # the model occasionally breaks the format; retry
+        raw = await llm.chat("question", prompts.QUESTION_MAKER,
+                             [{"role": "user", "content": user_msg}])
+        try:
+            q = llm.extract_json(raw)
+            _validate_question(q)
+        except (ValueError, json.JSONDecodeError) as exc:
+            last_error = exc
+            continue
+        if chapter:
+            q["chapter"] = chapter  # the requested chapter is authoritative
+        return q
+    raise ValueError(f"No valid question after retries: {last_error}")
 
 
 _BLOOM_LEVELS = {"knowledge", "comprehension", "application", "analysis", "synthesis", "evaluation"}
@@ -84,7 +103,9 @@ def _validate_question(q: dict) -> None:
     if len(q.get("rationales", [])) != n_opts:
         q["rationales"] = ["(no rationale provided)"] * n_opts
     if q.get("bloom_level") not in _BLOOM_LEVELS:
-        q["bloom_level"] = "application"
+        q["bloom_level"] = "analysis"
+    if q["bloom_level"] in ("knowledge", "comprehension") and not config.MOCK_LLM:
+        raise ValueError("Recall-level item; NBCOT practice needs case reasoning")
     if not q.get("reasoning_principle"):
         q["reasoning_principle"] = "Prioritize the option that best matches this client's current stage and safety needs."
 

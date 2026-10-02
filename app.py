@@ -40,8 +40,8 @@ class ReflectBody(BaseModel):
 
 class SessionStartBody(BaseModel):
     study_id: str
-    chapter: int | None = Field(default=None, ge=1, le=config.CHAPTERS)
-    total: int | None = Field(default=None, ge=1, le=50)  # default: config.SESSION_LENGTH
+    chapter: int | None = Field(default=None, ge=config.FIRST_PRACTICE_CHAPTER, le=config.CHAPTERS)
+    total: int | None = Field(default=None, ge=1, le=config.MAX_SESSION_LENGTH)
 
 
 class SessionBody(BaseModel):
@@ -68,9 +68,14 @@ def _startup() -> None:
 
 @app.post("/api/login")
 def login(body: LoginBody):
+    sid = body.study_id.strip()
+    # An instructor who types the instructor key into the Study ID box is
+    # sent to the instructor view instead of being registered as a student.
+    if config.INSTRUCTOR_KEY and secrets.compare_digest(sid.encode(), config.INSTRUCTOR_KEY.encode()):
+        return {"ok": True, "instructor": True}
     if not body.consent:
         raise HTTPException(400, "Consent is required to participate.")
-    db.register_student(body.study_id.strip())
+    db.register_student(sid)
     return {"ok": True}
 
 
@@ -116,7 +121,8 @@ async def session_end(body: SessionBody):
 
 @app.get("/api/config")
 def public_config():
-    return {"session_length": config.SESSION_LENGTH, "chapters": config.CHAPTERS}
+    return {"session_length": config.SESSION_LENGTH, "chapters": config.CHAPTERS,
+            "first_chapter": config.FIRST_PRACTICE_CHAPTER}
 
 
 @app.post("/api/feedback")
