@@ -34,10 +34,18 @@ check "quiz returns question card" '"type":"question"' "$R"
 check "question is single-format only" '"format":"single"' "$R"
 if echo "$R" | grep -q '"correct"'; then echo "FAIL  answer leak: correct indices sent to client"; FAIL=1; else echo "PASS  no answer leak"; fi
 
-# Wrong first attempt (correct answer for the pacing question is index 1) -> Scaffold, no reveal.
+# Wrong first attempt -> the MKO probes the reasoning first (no reveal), with
+# rising support (reasoning coach -> client perspective -> domain expert).
 R=$(curl -s -X POST localhost:8000/api/answer $J -d '{"study_id":"S-TEST1","selected":[0],"explanation":"re-reading every item seems most thorough"}')
-check "wrong attempt returns scaffold hint" '"type":"scaffold"' "$R"
-if echo "$R" | grep -q '"correct_options"'; then echo "FAIL  answer leak: scaffold step revealed the answer"; FAIL=1; else echo "PASS  scaffold does not reveal the answer"; fi
+check "answer opens the reasoning dialogue" '"type":"probe"' "$R"
+if echo "$R" | grep -q '"correct_options"'; then echo "FAIL  answer leak: probe revealed the answer"; FAIL=1; else echo "PASS  probe does not reveal the answer"; fi
+R=$(curl -s -X POST localhost:8000/api/probe $J -d '{"study_id":"S-TEST1","reply":"the case says limited time"}')
+check "second probe adapts support" '"support_level":2' "$R"
+R=$(curl -s -X POST localhost:8000/api/probe $J -d '{"study_id":"S-TEST1","reply":"the client wants to finish"}')
+check "third probe gives knowledge support" '"agent":"expert"' "$R"
+R=$(curl -s -X POST localhost:8000/api/probe $J -d '{"study_id":"S-TEST1","reply":"I would reconsider"}')
+check "after the dialogue the student reconsiders" '"type":"scaffold"' "$R"
+if echo "$R" | grep -q '"correct_options"'; then echo "FAIL  answer leak: reconsider step revealed the answer"; FAIL=1; else echo "PASS  reconsider does not reveal the answer"; fi
 
 # Reconsider: second (correct) attempt -> full Feedback.
 R=$(curl -s -X POST localhost:8000/api/answer $J -d '{"study_id":"S-TEST1","selected":[1],"explanation":"no penalty for guessing so use remaining time to review"}')
@@ -88,8 +96,10 @@ _, r = call("/api/session/start", {"study_id": S, "chapter": 2})
 check("session starts with question 1 of 3", r.get("type") == "question" and r["session"] == {"number": 1, "total": 3, "chapter": 2})
 check("session question has no answer leak", "correct" not in json.dumps(r.get("question", {})))
 for n in (1, 2, 3):
-    # answer until feedback (option 0, then 1 if scaffolded)
+    # answer, talk through the reasoning, then reconsider if needed
     _, a = call("/api/answer", {"study_id": S, "selected": [0], "explanation": "because"})
+    while a["type"] == "probe":
+        _, a = call("/api/probe", {"study_id": S, "reply": "my reasoning"})
     if a["type"] == "scaffold":
         _, a = call("/api/answer", {"study_id": S, "selected": [1], "explanation": "reconsidered"})
     check(f"question {n} feedback carries session counter", a["type"] == "feedback" and a["session"]["number"] == n)
@@ -112,6 +122,7 @@ _, st = call("/api/instructor/students", key=K)
 check("instructor sees students", any(x["study_id"] == S for x in st))
 _, at = call(f"/api/instructor/attempts?study_id={S}", key=K)
 check("instructor sees reasoning + reflections", len(at) == 3 and all(x["reflection"] and x["explanation"] for x in at))
+check("instructor sees the reasoning dialogue", all(x["dialogue"] for x in at))
 _, ss = call(f"/api/instructor/sessions?study_id={S}", key=K)
 check("instructor sees session summary", len(ss) == 1 and ss[0]["summary"])
 _, n = call("/api/instructor/coach", {"study_id": S, "note": "Ask what the client's safety needs are first."}, key=K)

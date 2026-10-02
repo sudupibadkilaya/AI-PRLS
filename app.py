@@ -38,6 +38,11 @@ class ReflectBody(BaseModel):
     reflection: str = Field(min_length=1, max_length=2000)
 
 
+class ProbeBody(BaseModel):
+    study_id: str
+    reply: str = Field(min_length=1, max_length=3000)
+
+
 class SessionStartBody(BaseModel):
     study_id: str
     chapter: int | None = Field(default=None, ge=config.FIRST_PRACTICE_CHAPTER, le=config.CHAPTERS)
@@ -92,6 +97,14 @@ async def answer(body: AnswerBody):
     sid = body.study_id.strip()
     return orchestrator.attach_instructor_note(
         sid, await orchestrator.handle_answer(sid, body.selected, body.explanation.strip())
+    )
+
+
+@app.post("/api/probe")
+async def probe(body: ProbeBody):
+    sid = body.study_id.strip()
+    return orchestrator.attach_instructor_note(
+        sid, await orchestrator.handle_probe(sid, body.reply.strip())
     )
 
 

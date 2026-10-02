@@ -7,6 +7,7 @@ Tables:
   attempts  — every answered practice question, with reasoning + verdict
   feedback  — thumbs up/down on assistant messages
   coaching_notes — instructor guidance for a student, used by the AI tutor
+  reasoning_turns — the MKO dialogue on each attempt (prompts, replies, support level)
 """
 from __future__ import annotations
 
@@ -66,6 +67,19 @@ CREATE TABLE IF NOT EXISTS coaching_notes (
   active INTEGER DEFAULT 1,      -- 1 = the AI uses it; 0 = retired by instructor
   delivered_at REAL              -- when the student first saw it
 );
+CREATE TABLE IF NOT EXISTS reasoning_turns (
+  id TEXT PRIMARY KEY,
+  attempt_id TEXT NOT NULL,
+  study_id TEXT NOT NULL,
+  turn INTEGER NOT NULL,
+  role TEXT NOT NULL,            -- 'tutor' or 'student'
+  agent TEXT,                    -- reasoning / expert / patient (tutor turns)
+  support_level INTEGER,         -- 0-3 (tutor turns)
+  reasoning_quality TEXT,        -- strong / partial / weak (tutor judgement)
+  gap TEXT,                      -- knowledge/reasoning gap the tutor identified
+  content TEXT NOT NULL,
+  ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS feedback (
   message_id TEXT PRIMARY KEY,
   study_id TEXT NOT NULL,
@@ -95,6 +109,9 @@ def init() -> None:
             "ALTER TABLE attempts ADD COLUMN used_scaffold INTEGER DEFAULT 0",
             "ALTER TABLE attempts ADD COLUMN reflection TEXT",
             "ALTER TABLE attempts ADD COLUMN session_id TEXT",
+            "ALTER TABLE attempts ADD COLUMN reasoning_quality TEXT",
+            "ALTER TABLE attempts ADD COLUMN probe_turns INTEGER DEFAULT 0",
+            "ALTER TABLE attempts ADD COLUMN max_support_level INTEGER",
         ):
             try:
                 con.execute(stmt)
@@ -130,6 +147,7 @@ def log_attempt(
     bloom_level: str | None = None,
     used_scaffold: bool = False,
     session_id: str | None = None,
+    dialogue: list[dict] | None = None,
 ) -> str:
     aid = uuid.uuid4().hex
     with _conn() as con:
@@ -153,6 +171,21 @@ def log_attempt(
                 session_id,
             ),
         )
+        tutor = [d for d in (dialogue or []) if d["role"] == "tutor"]
+        if tutor:
+            con.execute(
+                "UPDATE attempts SET reasoning_quality=?, probe_turns=?, max_support_level=? WHERE id=?",
+                (tutor[0].get("reasoning_quality"), len(tutor),
+                 max(d.get("support_level") or 0 for d in tutor), aid),
+            )
+        for i, d in enumerate(dialogue or [], 1):
+            con.execute(
+                "INSERT INTO reasoning_turns (id, attempt_id, study_id, turn, role, agent, "
+                "support_level, reasoning_quality, gap, content, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, aid, study_id, i, d["role"], d.get("agent"),
+                 d.get("support_level"), d.get("reasoning_quality"), d.get("gap"),
+                 d["content"], d.get("ts", time.time())),
+            )
     return aid
 
 
@@ -288,8 +321,8 @@ def session_report(session_id: str) -> dict:
     with _conn() as con:
         rows = con.execute(
             "SELECT chapter, domain, fmt, verdict, bloom_level, used_scaffold, "
-            "reflection, ts, question_json, explanation FROM attempts "
-            "WHERE session_id=? ORDER BY ts",
+            "reflection, ts, question_json, explanation, reasoning_quality, probe_turns, "
+            "max_support_level FROM attempts WHERE session_id=? ORDER BY ts",
             (session_id,),
         ).fetchall()
         sess = con.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
@@ -314,8 +347,16 @@ def session_report(session_id: str) -> dict:
             "bloom_level": r["bloom_level"],
             "explanation": r["explanation"] or "",
             "reflection": r["reflection"] or "",
+            "initial_reasoning": r["reasoning_quality"],
+            "tutor_prompts": r["probe_turns"] or 0,
+            "max_support_level": r["max_support_level"],
         })
     report["questions"] = items
+    levels = [i["max_support_level"] for i in items if i["max_support_level"] is not None]
+    report["avg_support_level"] = round(sum(levels) / len(levels), 2) if levels else None
+    report["initial_reasoning_counts"] = {
+        k: sum(1 for i in items if i["initial_reasoning"] == k) for k in ("strong", "partial", "weak")
+    }
     return report
 
 
@@ -345,7 +386,8 @@ def instructor_attempts(study_id: str) -> list[dict]:
     with _conn() as con:
         rows = con.execute(
             "SELECT id, ts, session_id, chapter, domain, question_json, selected, "
-            "explanation, verdict, bloom_level, used_scaffold, reflection "
+            "explanation, verdict, bloom_level, used_scaffold, reflection, "
+            "reasoning_quality, probe_turns, max_support_level "
             "FROM attempts WHERE study_id=? ORDER BY ts DESC",
             (study_id,),
         ).fetchall()
@@ -364,8 +406,20 @@ def instructor_attempts(study_id: str) -> list[dict]:
             "explanation": r["explanation"], "verdict": r["verdict"],
             "bloom_level": r["bloom_level"], "used_scaffold": bool(r["used_scaffold"]),
             "reflection": r["reflection"],
+            "reasoning_quality": r["reasoning_quality"],
+            "max_support_level": r["max_support_level"],
+            "dialogue": dialogue_for(con_rows=None, attempt_id=r["id"]),
         })
     return out
+
+
+def dialogue_for(con_rows=None, attempt_id: str = "") -> list[dict]:
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT role, agent, support_level, reasoning_quality, gap, content FROM reasoning_turns "
+            "WHERE attempt_id=? ORDER BY turn", (attempt_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def instructor_sessions(study_id: str) -> list[dict]:

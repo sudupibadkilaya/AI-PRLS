@@ -20,6 +20,7 @@ GEN = {
     "progress": {"temperature": 0.4, "max_tokens": 500},
     "chat":     {"temperature": 0.5, "max_tokens": 400},
     "summary":  {"temperature": 0.4, "max_tokens": 900},
+    "probe":    {"temperature": 0.5, "max_tokens": 300},
 }
 
 # --- Chapter practice sessions ("select a chapter, 20 questions, summary") ---

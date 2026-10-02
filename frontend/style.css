@@ -183,6 +183,19 @@ button { font-family: var(--sans); cursor: pointer; }
   padding: 8px 10px; margin: 8px 0;
 }
 
+/* ---------- MKO reasoning dialogue ---------- */
+.probe-card textarea {
+  width: 100%; min-height: 56px; padding: 8px 10px; font-size: 14px;
+  font-family: var(--sans); border: 1px solid var(--rule); background: var(--paper);
+  resize: vertical; margin-top: 8px;
+}
+.probe-text { font-size: 15px; }
+.agent-patient .socratic-label { color: #6b4fa0; }
+.agent-expert .socratic-label { color: #8a6508; }
+.attempt .dialogue { margin-top: 6px; font-size: 13.5px; border-left: 2px solid var(--rule); padding-left: 10px; }
+.attempt .dialogue p { margin: 3px 0; white-space: pre-wrap; }
+.attempt .dialogue .t { color: var(--pine); }
+
 /* ---------- Reflect card ---------- */
 .reflect-card textarea {
   width: 100%; min-height: 56px; padding: 8px 10px; font-size: 14px;

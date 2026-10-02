@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import json
 import re
+import time
 
 from . import agents, config, db
 
 # One pending question per student, held server-side across the
-# Attempt -> Scaffold -> Reconsider -> Respond -> Feedback -> Reflect loop.
-# Shape: {"question": q, "stage": "attempt" | "reconsider" | "reflect",
+# Encounter -> articulate reasoning -> MKO probes (adaptive, fading support)
+# -> reconsider -> justify -> feedback -> reflect loop.
+# Shape: {"question": q, "stage": "attempt" | "probe" | "reconsider" | "reflect",
 #         "first_selected": list[int] | None, "first_explanation": str | None,
 #         "attempt_id": str | None}
 _pending: dict[str, dict] = {}
@@ -73,9 +75,72 @@ async def _serve_question(study_id: str, chapter: int | None, topic: str) -> dic
     }
 
 REFLECTION_PROMPT = (
-    "In a sentence or two: what's the one thing you'll take from this case "
-    "into the next one?"
+    "Reflect for a moment: what did you initially focus on or misunderstand, "
+    "what helped you reconsider, and what principle from this case could you "
+    "apply to a different client?"
 )
+
+AGENT_LABELS = {"reasoning": "Reasoning coach", "expert": "Domain expert",
+                "patient": "Client's perspective"}
+
+
+def _independence(study_id: str) -> str:
+    """Fading: how independently the student has reasoned in recent cases
+    (this session if one is running). high = strong first reasoning without
+    a hint on the last 3 cases."""
+    sess = _sessions.get(study_id)
+    rep = db.session_report(sess["id"]) if sess else None
+    recent = (rep["questions"][-3:] if rep else [])
+    if len(recent) >= 3 and all(q["initial_reasoning"] == "strong" and not q["used_scaffold"] for q in recent):
+        return "high"
+    if recent and sum(q["initial_reasoning"] == "weak" for q in recent) >= 2:
+        return "low"
+    return "medium"
+
+
+def _max_turns(quality: str, correct: bool, independence: str) -> int:
+    """How many MKO prompts before moving on. Support fades as the student
+    shows independent reasoning."""
+    if correct:
+        n = 1 if quality == "strong" else 2
+    else:
+        n = 2 if quality == "strong" else 3
+    if independence == "high":
+        n -= 1
+    return max(1, n)
+
+
+def _probe_payload(study_id: str, turn: dict, n: int, max_n: int) -> dict:
+    mid = db.log_message(study_id, "assistant", turn["content"], "probe")
+    return {
+        "type": "probe",
+        "message": turn["content"],
+        "agent": turn["agent"],
+        "agent_label": AGENT_LABELS.get(turn["agent"], "Tutor"),
+        "support_level": turn["support_level"],
+        "turn": n, "max_turns": max_n,
+        "session": _session_info(study_id),
+        "message_id": mid, "route": "probe",
+    }
+
+
+async def _next_probe(study_id: str, pending: dict) -> dict:
+    q = pending["question"]
+    tutor_turns = [d for d in pending["dialogue"] if d["role"] == "tutor"]
+    r = await agents.probe(
+        q, pending["first_selected"], pending["first_explanation"], pending["first_correct"],
+        pending["dialogue"], len(tutor_turns) + 1, pending["independence"],
+        guidance=db.active_guidance(study_id),
+    )
+    if not tutor_turns:
+        pending["max_turns"] = _max_turns(r["reasoning_quality"], pending["first_correct"],
+                                          pending["independence"])
+    turn = {"role": "tutor", "content": r["message"], "agent": r["agent"],
+            "support_level": r["support_level"], "reasoning_quality": r["reasoning_quality"],
+            "gap": r["gap"], "ts": time.time()}
+    pending["dialogue"].append(turn)
+    pending["last_ready"] = r["ready"]
+    return _probe_payload(study_id, turn, len(tutor_turns) + 1, pending["max_turns"])
 
 
 async def handle_chat(study_id: str, message: str) -> dict:
@@ -131,31 +196,53 @@ async def handle_answer(study_id: str, selected: list[int], explanation: str) ->
     )
 
     if pending["stage"] == "attempt":
-        correct = sorted(selected) == sorted(q["correct"])
-        if not correct:
-            # Wrong first attempt: Scaffold, then let them Reconsider — no
-            # answer reveal yet.
-            hint = await agents.scaffold(q, selected, explanation,
-                                         guidance=db.active_guidance(study_id))
-            pending["stage"] = "reconsider"
-            pending["first_selected"] = selected
-            pending["first_explanation"] = explanation
-            mid = db.log_message(study_id, "assistant", hint, "scaffold")
-            return {
-                "type": "scaffold", "hint": hint,
-                "question": {k: q[k] for k in _STUDENT_FIELDS},
-                "session": _session_info(study_id),
-                "instruction": "Reconsider, then choose the ONE best answer and tell me why.",
-                "message_id": mid, "route": "scaffold",
-            }
-        # Correct on the first attempt: go straight to Feedback.
-        return await _finish_with_feedback(study_id, pending, selected, explanation, used_scaffold=False)
+        # Encounter -> articulate reasoning -> the MKO probes the thinking
+        # BEFORE anything is revealed, whether or not the choice is correct.
+        pending["first_selected"] = selected
+        pending["first_explanation"] = explanation
+        pending["first_correct"] = sorted(selected) == sorted(q["correct"])
+        pending["dialogue"] = []
+        pending["independence"] = _independence(study_id)
+        pending["stage"] = "probe"
+        return await _next_probe(study_id, pending)
 
-    # stage == "reconsider": this is the second attempt, after a scaffold hint.
+    # stage == "reconsider": the second attempt, after the reasoning dialogue.
     return await _finish_with_feedback(
         study_id, pending, selected, explanation, used_scaffold=True,
         first_selected=pending["first_selected"], first_explanation=pending["first_explanation"],
     )
+
+
+async def handle_probe(study_id: str, reply: str) -> dict:
+    """The student answers the tutor's prompt. Probe again (adaptive support)
+    or move on: correct choice -> feedback; otherwise -> reconsider."""
+    pending = _pending.get(study_id)
+    if not pending or pending.get("stage") != "probe":
+        text = "There's no open case discussion right now — say \"quiz me\" to get a case."
+        mid = db.log_message(study_id, "assistant", text, "probe")
+        return {"type": "text", "text": text, "message_id": mid, "route": "probe"}
+    db.log_message(study_id, "student", reply, "probe")
+    pending["dialogue"].append({"role": "student", "content": reply, "ts": time.time()})
+    tutor_turns = sum(1 for d in pending["dialogue"] if d["role"] == "tutor")
+    if tutor_turns < pending["max_turns"] and not pending.get("last_ready"):
+        return await _next_probe(study_id, pending)
+    q = pending["question"]
+    if pending["first_correct"]:
+        return await _finish_with_feedback(
+            study_id, pending, pending["first_selected"], pending["first_explanation"],
+            used_scaffold=False)
+    # Reasoning made visible, gaps surfaced: reconsider and choose again.
+    pending["stage"] = "reconsider"
+    hint = ("You've talked through your reasoning. With what you just reconsidered, "
+            "look at the case again and choose the ONE best answer.")
+    mid = db.log_message(study_id, "assistant", hint, "scaffold")
+    return {
+        "type": "scaffold", "hint": hint,
+        "question": {k: q[k] for k in _STUDENT_FIELDS},
+        "session": _session_info(study_id),
+        "instruction": "Make and justify your decision: choose the ONE best answer and tell me why.",
+        "message_id": mid, "route": "scaffold",
+    }
 
 
 async def _finish_with_feedback(
@@ -164,13 +251,14 @@ async def _finish_with_feedback(
     first_explanation: str | None = None,
 ) -> dict:
     q = pending["question"]
+    dialogue = pending.get("dialogue") or []
     result = await agents.coach(q, selected, explanation, first_selected, first_explanation,
-                                guidance=db.active_guidance(study_id))
+                                guidance=db.active_guidance(study_id), dialogue=dialogue)
     sess = _sessions.get(study_id)
     attempt_id = db.log_attempt(
         study_id, q, selected, explanation, result["verdict"],
         result.get("bloom_level"), used_scaffold,
-        session_id=sess["id"] if sess else None,
+        session_id=sess["id"] if sess else None, dialogue=dialogue,
     )
     result["correct_options"] = q["correct"]
     result["rationales"] = q.get("rationales", [])
@@ -252,7 +340,7 @@ async def handle_session_next(study_id: str) -> dict:
         mid = db.log_message(study_id, "assistant", text, "session")
         return {"type": "text", "text": text, "message_id": mid, "route": "session"}
     pending = _pending.get(study_id)
-    if pending and pending.get("stage") in ("attempt", "reconsider"):
+    if pending and pending.get("stage") in ("attempt", "probe", "reconsider"):
         text = "Let's finish the current case first — choose an answer and tell me why."
         mid = db.log_message(study_id, "assistant", text, "session")
         return {"type": "text", "text": text, "message_id": mid, "route": "session"}

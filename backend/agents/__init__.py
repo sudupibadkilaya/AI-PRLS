@@ -199,6 +199,7 @@ async def coach(
     first_selected: list[int] | None = None,
     first_explanation: str | None = None,
     guidance: list[str] | None = None,
+    dialogue: list[dict] | None = None,
 ) -> dict:
     """Give full feedback on the student's FINAL answer, and above all their
     reasoning. If a scaffolded first attempt is passed, the feedback
@@ -213,6 +214,8 @@ async def coach(
             f"STUDENT'S FIRST (SCAFFOLDED) ATTEMPT — selected (zero-based index): "
             f"{first_selected}, explanation: {first_explanation or '(none given)'}\n\n"
         )
+    if dialogue:
+        user_msg += "REASONING DIALOGUE (before the answer was revealed):\n" + _format_dialogue(dialogue) + "\n\n"
     user_msg += (
         f"STUDENT'S FINAL SELECTION (zero-based index): {selected}\n"
         f"STUDENT'S FINAL EXPLANATION OF WHY: {explanation or '(none given)'}\n\n"
@@ -285,3 +288,51 @@ async def session_summary(report: dict, guidance: list[str] | None = None) -> st
 async def small_talk(message: str, history: list[dict]) -> str:
     convo = history[-6:] + [{"role": "user", "content": message}]
     return await llm.chat("chat", prompts.CHAT, convo)
+
+
+def _format_dialogue(dialogue: list[dict]) -> str:
+    return "\n".join(
+        f"{'TUTOR (' + d.get('agent', 'reasoning') + ')' if d['role'] == 'tutor' else 'STUDENT'}: {d['content']}"
+        for d in dialogue
+    )
+
+
+_AGENTS = {"reasoning", "expert", "patient"}
+_QUALITY = {"strong", "partial", "weak"}
+
+
+async def probe(question: dict, selected: list[int], explanation: str, is_correct: bool,
+                dialogue: list[dict], turn: int, independence: str,
+                guidance: list[str] | None = None) -> dict:
+    """One MKO turn: judge the student's reasoning and ask one adaptive prompt.
+    Never reveals the answer."""
+    user_msg = (
+        f"QUESTION JSON (for your reference only — never reveal the key):\n"
+        f"{json.dumps(question, indent=2)}\n\n"
+        f"STUDENT'S CHOICE (zero-based index): {selected} — system scoring: "
+        f"{'correct' if is_correct else 'not the best answer'} (do NOT tell the student)\n"
+        f"STUDENT'S STATED REASONING: {explanation or '(none given)'}\n\n"
+        f"DIALOGUE SO FAR:\n{_format_dialogue(dialogue) if dialogue else '(none yet)'}\n\n"
+        f"Turn number: {turn}. Student's recent independence level: {independence}.\n"
+        "Write your next prompt now."
+        + _guidance_block(guidance)
+    )
+    raw = await llm.chat("probe", prompts.MKO_PROBE, [{"role": "user", "content": user_msg}])
+    try:
+        r = llm.extract_json(raw)
+    except (ValueError, json.JSONDecodeError):
+        r = {"message": raw.strip()}
+    msg = (r.get("message") or "").strip() or (
+        "Walk me through how you arrived at that choice — what in the case mattered most?")
+    try:
+        level = max(0, min(3, int(r.get("support_level", 1))))
+    except (TypeError, ValueError):
+        level = 1
+    return {
+        "reasoning_quality": r.get("reasoning_quality") if r.get("reasoning_quality") in _QUALITY else "partial",
+        "gap": r.get("gap") or None,
+        "support_level": level,
+        "agent": r.get("agent") if r.get("agent") in _AGENTS else "reasoning",
+        "message": msg,
+        "ready": bool(r.get("ready")),
+    }

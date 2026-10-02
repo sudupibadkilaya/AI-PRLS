@@ -229,6 +229,7 @@ function renderResponse(data) {
   if ("session" in data) updateBanner(data.session);
   if (data.type === "question") return renderQuestion(data);
   if (data.type === "scaffold") return renderScaffold(data);
+  if (data.type === "probe") return renderProbe(data);
   if (data.type === "feedback") return renderFeedback(data);
   if (data.type === "progress") return renderProgress(data);
   if (data.type === "session_summary") return renderSessionSummary(data);
@@ -414,6 +415,7 @@ async function submitAnswer(card, q, ta, submit) {
     });
     const data = await res.json();
     pending.remove();
+    lastCard = { card, selected };
     if (data.type === "feedback") markOptions(card, selected, data.correct_options);
     renderResponse(data);
   } catch {
@@ -422,6 +424,60 @@ async function submitAnswer(card, q, ta, submit) {
   } finally {
     setBusy(false);
   }
+}
+
+/* ---------- MKO reasoning dialogue (before any answer is revealed) ---------- */
+let lastCard = null;
+
+function renderProbe(data) {
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  b.classList.add("probe-card", "agent-" + (data.agent || "reasoning"));
+
+  const label = document.createElement("div");
+  label.className = "socratic-label";
+  label.textContent = (data.agent_label || "Reasoning coach");
+  b.appendChild(label);
+
+  const q = document.createElement("div");
+  q.className = "probe-text";
+  q.textContent = data.message;
+  b.appendChild(q);
+
+  const ta = document.createElement("textarea");
+  ta.placeholder = "Explain your thinking (type or use the mic)";
+  b.appendChild(ta);
+  b.appendChild(dictationButton(ta));
+
+  const send = document.createElement("button");
+  send.className = "qsubmit";
+  send.textContent = "Reply";
+  send.addEventListener("click", async () => {
+    const reply = ta.value.trim();
+    if (!reply) { alert("Share a sentence or two about your thinking."); return; }
+    send.disabled = true; ta.disabled = true;
+    const pending = addThinking();
+    setBusy(true);
+    try {
+      const res = await fetch("/api/probe", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ study_id: studyId, reply }),
+      });
+      const out = await res.json();
+      pending.remove();
+      if (out.type === "feedback" && lastCard) markOptions(lastCard.card, lastCard.selected, out.correct_options);
+      renderResponse(out);
+    } catch {
+      pending.remove();
+      addTutorText("Something went wrong sending that. Please try again.");
+      send.disabled = false; ta.disabled = false;
+    } finally {
+      setBusy(false);
+    }
+  });
+  b.appendChild(send);
+  scrollDown();
+  ta.focus();
 }
 
 /* ---------- scaffold (wrong first attempt) ---------- */

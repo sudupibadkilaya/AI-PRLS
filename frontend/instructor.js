@@ -177,6 +177,23 @@
     if (a.bloom_level) extra.push("reasoning level: " + (BLOOM[a.bloom_level] || a.bloom_level));
     card.appendChild(field("Result", `${verdict} (${extra.join(", ")})`));
     card.appendChild(field("Student's reasoning", a.explanation || "(none given)"));
+    if (a.dialogue && a.dialogue.length) {
+      const LBL = { reasoning: "Reasoning coach", expert: "Domain expert", patient: "Client" };
+      const f = el("div", "field");
+      f.appendChild(el("b", null,
+        `Reasoning dialogue — initial reasoning: ${a.reasoning_quality || "–"}, ` +
+        `highest support level: ${a.max_support_level ?? "–"} (0 challenge … 3 knowledge support)`));
+      const box = el("div", "dialogue");
+      a.dialogue.forEach((d) => {
+        const p = el("p", d.role === "tutor" ? "t" : "s");
+        p.textContent = d.role === "tutor"
+          ? `${LBL[d.agent] || "Tutor"} (level ${d.support_level ?? "–"}): ${d.content}`
+          : `Student: ${d.content}`;
+        box.appendChild(p);
+      });
+      f.appendChild(box);
+      card.appendChild(f);
+    }
     card.appendChild(field("Reflection", a.reflection || "(no reflection)"));
 
     const btn = el("button", "linklike coach-this", "Coach on this answer");

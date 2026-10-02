@@ -157,6 +157,8 @@ async def chat(role: str, system: str, messages: list[dict]) -> str:
             return _next_example("progress", _EXAMPLES["progress_notes"])
         if role == "summary":
             return _mock_summary(messages)
+        if role == "probe":
+            return _mock_probe(messages)
         return _next_example("chat", _EXAMPLES["chat_replies"])
 
     gen = config.GEN.get(role, config.GEN["chat"])
@@ -174,3 +176,25 @@ async def chat(role: str, system: str, messages: list[dict]) -> str:
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
+
+
+_MOCK_PROBES = [
+    ("reasoning", 1, "You chose that option — what information in this case is most important to your decision, and why?"),
+    ("patient", 2, "\"I really want to get back to doing this at home by myself.\" How does the client's goal change what you would do FIRST?"),
+    ("expert", 3, "A useful principle here: address safety and the client's priority before training a new skill. With that in mind, what would you reconsider?"),
+]
+
+
+def _mock_probe(messages: list[dict]) -> str:
+    """Canned MKO turns (mock mode): strong if the choice was correct."""
+    last = messages[-1]["content"] if messages else ""
+    correct = "system scoring: correct" in last
+    m = re.search(r"Turn number: (\d+)", last)
+    turn = int(m.group(1)) if m else 1
+    if correct:
+        return json.dumps({"reasoning_quality": "strong", "gap": None, "support_level": 0,
+                           "agent": "reasoning", "ready": turn >= 1,
+                           "message": "Suppose this client also lived alone — would your decision change? Why?"})
+    agent, level, msg = _MOCK_PROBES[min(turn, 3) - 1]
+    return json.dumps({"reasoning_quality": "weak", "gap": "prioritization", "support_level": level,
+                       "agent": agent, "ready": False, "message": msg})
