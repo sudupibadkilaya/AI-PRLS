@@ -48,7 +48,8 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
   const sel = $("#chapter-select");
   for (let i = c.first_chapter || 1; i <= c.chapters; i++) {
     const o = document.createElement("option");
-    o.value = i; o.textContent = "Chapter " + i;
+    const wk = (c.weeks || {})[String(i)];
+    o.value = i; o.textContent = "Chapter " + i + (wk ? ` (Week ${wk})` : "");
     sel.appendChild(o);
   }
   $("#session-start-btn").textContent = `Start ${sessionLength}-question session`;

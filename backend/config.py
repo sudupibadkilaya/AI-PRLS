@@ -29,6 +29,9 @@ CHAPTERS = int(os.getenv("AIPRLS_CHAPTERS", "16"))   # TherapyEd chapters offere
 # not offered for practice questions (Dr. Dumitrescu, Oct 1).
 FIRST_PRACTICE_CHAPTER = int(os.getenv("AIPRLS_FIRST_PRACTICE_CHAPTER", "2"))
 MAX_SESSION_LENGTH = 50
+# Dr. Dumitrescu's 5-week TherapyEd review plan: chapter -> week (dropdown labels).
+STUDY_PLAN_WEEKS = {3: 1, 4: 1, 6: 2, 8: 2, 11: 2, 7: 3, 9: 3, 12: 3,
+                    10: 4, 13: 4, 14: 4, 5: 5, 15: 5}
 
 # --- RAG over the team's own companion documents -----------------------------
 COMPANION_DIR = ROOT / "companion_docs"

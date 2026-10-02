@@ -122,7 +122,8 @@ async def session_end(body: SessionBody):
 @app.get("/api/config")
 def public_config():
     return {"session_length": config.SESSION_LENGTH, "chapters": config.CHAPTERS,
-            "first_chapter": config.FIRST_PRACTICE_CHAPTER}
+            "first_chapter": config.FIRST_PRACTICE_CHAPTER,
+            "weeks": {str(k): v for k, v in config.STUDY_PLAN_WEEKS.items()}}
 
 
 @app.post("/api/feedback")

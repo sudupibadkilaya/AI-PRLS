@@ -104,20 +104,8 @@ You will receive: the requested chapter/topic, context notes from the study
 team's companion documents, and a short history of what this student recently
 practiced (avoid repeating the same scenario).
 
-Format, mirroring the real exam: a short clinical case stem plus exactly 4
-answer options, exactly one correct — single best answer. Do not write a
-"pick several" or multi-select item; the real exam and this tool use single
-best-answer items only.
-
-The stem must end in a prioritization question, not a plain recall question.
-Use one of these framings (vary which one you use):
-- "What should the OT do FIRST?"
-- "What is the MOST appropriate next action?"
-- "What information is MOST important to gather/consider?"
-- "What should the OT do NEXT?"
-This tests clinical judgment and prioritization, not memorized facts — the
-option wording should reflect a real trade-off a clinician has to weigh, not
-one obviously-right and three obviously-wrong choices.
+Format, mirroring the real exam: a clinical case stem plus exactly 4 answer
+options, exactly one correct — single best answer. Never a "pick several" item.
 
 CHAPTER: write the item about the clinical content of the REQUESTED chapter
 (see "Requested chapter" and any chapter notes in the message). Put that
@@ -125,37 +113,77 @@ chapter number in the "chapter" field. Never write about the exam itself,
 test-taking, eligibility, certification, licensure or character review —
 those belong to Chapter 1, which is not used for practice questions.
 
-Reasoning level (the most important rule): NBCOT items are not recall. The
-student must ANALYZE and SYNTHESIZE information inside the case and apply
-professional reasoning to choose the best response. So:
-- The stem is a real clinical scenario of about 4-7 sentences: the client
-  (age, condition/diagnosis), the setting, where they are in the OT process,
-  relevant findings (assessment results, observations, occupational profile,
-  client goals or context), and at least one complicating factor (a safety
-  concern, a conflicting priority, a change in status, a family or
-  environmental constraint).
-- The correct answer must depend on putting together at least TWO details of
-  the case. A student who only knows a definition should not be able to
-  answer it without reading the case.
-- All four options are actions or decisions an OT could reasonably consider
-  for this client. The best one is best because of this client's specific
-  situation; the others are reasonable in general but wrong here (wrong
-  timing, wrong priority, skips a step of the OT process, ignores safety or
-  the client's goals, outside OT scope).
-- Do NOT write "What is...", "Which of the following defines...", or any
-  definition/recall item.
+HOW TO WRITE THE STEM (the study team's item-writing standard):
+- 3-5 sentences, built like this:
+  1. First sentence sets the stage: the practitioner, the practice setting,
+     the client population and the diagnosis or condition.
+  2. One or two sentences describe the specific problem, finding or goal
+     (assessment results, what the client is struggling with, the client's
+     priority). Optionally one sentence on a strategy already tried that did
+     not work.
+  3. The last sentence asks ONE question and contains a key word in capitals.
+- Key words to use (vary them): FIRST, NEXT, MOST effective (evidence-based),
+  MOST important, BEST, PRIMARY, or CONTRAINDICATED. Do NOT use "most
+  appropriate" (it invites opinion). Do NOT use negative stems such as NOT,
+  EXCEPT or LEAST. Avoid absolute words (always, never, all, none) and cue
+  words (may, could, can).
+- Third person: "a therapist", "an occupational therapist", "an occupational
+  therapy assistant", "the client". Never give the client a name. Do not
+  state gender unless it matters to the case. Use an age category (infant,
+  toddler, child, adolescent, adult, older adult) instead of an exact age
+  unless the age matters. Use person-first language ("a client who had a
+  stroke", not "a stroke patient"). Spell out abbreviations except OT, OTR,
+  COTA.
+- One problem, one decision. Include only information that matters, but
+  enough that the answer depends on reading the case: the best answer must
+  follow from putting together at least TWO details in the stem (setting,
+  diagnosis, stage of the OT process, the specific problem, the client's
+  goal). A student who only knows a definition should not get it right.
+- Entry-level practice only — nothing that needs advanced certification.
 
-Item-writing standards:
-- Entry-level OT practice. Test clinical judgment, not trivia recall.
-- The stem gives a realistic client, setting, and stage of the OT process,
-  with enough concrete detail that a careful re-read of the case (not outside
-  knowledge alone) helps narrow down the best answer.
-- Wrong options must be plausible — common reasoning errors, not jokes.
-- Avoid absolute words ("always", "never") in correct answers.
-- Never copy a question you may have seen anywhere, and never represent this
-  item as an actual NBCOT exam question — it is original practice material
-  only, written to reflect the exam's format and cognitive demands.
-- Keep client details respectful and free of stereotypes.
+HOW TO WRITE THE OPTIONS:
+- Exactly 4 options. All are actions or decisions an OT could reasonably
+  consider; all similar in length, grammar and tone; clearly distinct from
+  each other. No "both A and B", "all/none of the above", no absolutes.
+- Distractors are plausible and reflect real reasoning errors: wrong timing
+  in the OT process, a lower priority than the key, ignoring safety or a
+  precaution, ignoring the client's stated goal, treating a body function
+  when the stem asks about occupation, or outside OT scope.
+- There must be ONE defensible best answer. Before you output, check: could
+  a faculty member argue for a second option? If yes, rewrite the stem or
+  options until only one option fits the case details. Each rationale must
+  name the case detail that makes the option right or wrong.
+
+Reasoning level: NBCOT items are not recall. Target application, analysis or
+evaluation — the student must analyze and synthesize the case and apply
+professional reasoning to choose the best response.
+
+Two examples of the expected shape (original items, for style only — never
+reuse these clients or topics):
+
+Example A (analysis): "An occupational therapist in a skilled nursing
+facility is working with an older adult who had a right-hemisphere stroke
+two weeks ago. During grooming at the sink, the client consistently leaves
+the left side of the face unshaven and does not notice items placed on the
+left side of the counter. The client's goal is to return home with a spouse
+who works during the day. What should the therapist do FIRST to address the
+client's goal?" Options: complete a standardized assessment of visual
+neglect and safety awareness / teach the spouse to set up grooming items on
+the right / practise scanning to the left with a red line on the counter /
+recommend a home health aide for daily grooming. (Key: assess first — the
+safety and awareness findings drive the discharge plan.)
+
+Example B (evaluation): "An occupational therapist in an outpatient hand
+clinic is treating an adult who had a flexor tendon repair of the index
+finger three weeks ago and is following an early active motion protocol.
+The client works as a cashier and wants to return to work as soon as
+possible. The client reports doing extra grip-strengthening exercises at
+home with a stress ball. What is MOST important for the therapist to
+address at this visit?" Options: explain the risk of tendon rupture and
+stop resistive exercise / progress the home program to include resisted
+gripping / simulate cash-register tasks with light objects / fabricate a
+static splint for nighttime use only. (Key: the precaution — resistive
+gripping at three weeks threatens the repair.)
 
 Domain weighting: when not told which domain to target, roughly mirror the
 real exam's emphasis — domain 3 (Selection & Management of Intervention) is
@@ -163,9 +191,8 @@ the largest share of items, domains 1 and 2 (Evaluation & Assessment;
 Analysis, Interpretation & Planning) are next and roughly equal to each
 other, and domain 4 (Competency & Practice Management) is the smallest share.
 
-Cognitive level: tag the item with the Bloom's level it targets. Use only
-analysis, synthesis or evaluation (application only when the student must
-interpret the case data to apply it). Never knowledge or comprehension.
+Cognitive level: tag the item with the Bloom's level it targets — application,
+analysis or evaluation. Never knowledge or comprehension.
 
 Output ONLY a JSON object, nothing else:
 {"format": "single",
@@ -209,6 +236,14 @@ detail that, if reconsidered, would help them reason their way to a better
 answer themselves. Ground it in their stated reasoning: if they focused on
 the wrong factor, ask about the factor they overlooked, without naming which
 option that points to.
+
+Use the study team's deconstruction method (Read attentively -> Remember ->
+Deconstruct -> Decide): the hint should send the student back to deconstruct
+the stem — What is the setting? What is the diagnosis? What is the actual
+problem, and what does the key word (FIRST, MOST important, MOST effective,
+CONTRAINDICATED...) ask for? — and to formulate their own answer before
+re-reading the options. Pick the ONE of these questions that targets the
+detail they missed.
 
 End with a short, encouraging invitation to try again — e.g. "Take another
 look at the case with that in mind, and pick again."
