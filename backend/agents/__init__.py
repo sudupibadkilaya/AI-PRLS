@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from .. import config, db, llm, rag
 from . import prompts
@@ -75,20 +76,87 @@ async def make_question(
         "Write one new case-based, single-best-answer question now."
         + _guidance_block(guidance)
     )
+    # Generate, check against the team's item-writing rules, and ask the model
+    # to revise when a rule is broken (it is a mid-sized model and does not
+    # always follow every rule on the first try).
+    messages = [{"role": "user", "content": user_msg}]
+    best: tuple[int, dict] | None = None
     last_error: Exception | None = None
-    for _ in range(3):  # the model occasionally breaks the format; retry
-        raw = await llm.chat("question", prompts.QUESTION_MAKER,
-                             [{"role": "user", "content": user_msg}])
+    for _ in range(4):
+        raw = await llm.chat("question", prompts.QUESTION_MAKER, messages)
         try:
             q = llm.extract_json(raw)
             _validate_question(q)
         except (ValueError, json.JSONDecodeError) as exc:
             last_error = exc
+            messages = messages[:1] + [
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": f"That was not usable ({exc}). Output the JSON item again, following every rule."},
+            ]
             continue
-        if chapter:
-            q["chapter"] = chapter  # the requested chapter is authoritative
-        return q
-    raise ValueError(f"No valid question after retries: {last_error}")
+        issues = [] if config.MOCK_LLM else quality_issues(q)
+        if best is None or len(issues) < best[0]:
+            best = (len(issues), q)
+        if not issues:
+            break
+        messages = messages[:1] + [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": "Revise this item. It breaks these item-writing rules:\n- "
+             + "\n- ".join(issues) + "\nOutput only the corrected JSON item."},
+        ]
+    if best is None:
+        raise ValueError(f"No valid question after retries: {last_error}")
+    q = best[1]
+    if chapter:
+        q["chapter"] = chapter  # the requested chapter is authoritative
+    return q
+
+
+_KEYWORD_RE = re.compile(r"\b(FIRST|NEXT|MOST|BEST|PRIMARY|PRIORITY|CONTRAINDICATED)\b")
+_NEGATIVE_RE = re.compile(r"\b(EXCEPT|NOT|LEAST)\b")
+_CUE_RE = re.compile(r"\b(may|might|could)\b", re.I)
+_NAME_RE = re.compile(r"\b(Mr|Mrs|Ms|Miss|Dr)\.?\s+[A-Z]|\bnamed\s+[A-Z]")
+_RECALL_RE = re.compile(r"^(what is the (definition|meaning|name|underlying cause|cause)|which of the following (is|defines|describes)|what does .* stand for)", re.I)
+
+
+def quality_issues(q: dict) -> list[str]:
+    """Check an item against the study team's MCQ writing standards."""
+    issues = []
+    stem = q.get("stem", "").strip()
+    sentences = [x for x in re.split(r"(?<=[.?!])\s+", stem) if x]
+    question = sentences[-1] if sentences else ""
+    if not question.endswith("?"):
+        issues.append("The stem must end with a single question (ending in '?').")
+    if not _KEYWORD_RE.search(question):
+        issues.append("The final question must contain a key word in CAPITALS: FIRST, NEXT, "
+                      "MOST effective, MOST important, BEST, PRIMARY or CONTRAINDICATED.")
+    if "most appropriate" in stem.lower():
+        issues.append("Do not use 'most appropriate'; use MOST effective, MOST important, FIRST or NEXT.")
+    if _NEGATIVE_RE.search(question):
+        issues.append("Do not use a negative stem (NOT, EXCEPT, LEAST).")
+    if _CUE_RE.search(stem):
+        issues.append("Remove cue words (may, might, could) from the stem.")
+    if _NAME_RE.search(stem):
+        issues.append("Do not name the client; write 'the client' in third person.")
+    if _RECALL_RE.search(question):
+        issues.append("The question asks for recall or a cause. Ask for a therapist decision or action "
+                      "(what to do FIRST/NEXT, the MOST effective intervention, the MOST important "
+                      "information), and make every option an action the therapist could take.")
+    if not 3 <= len(sentences) <= 6:
+        issues.append("The stem must be 3-5 sentences: setting/population/diagnosis, then the "
+                      "problem, then the question.")
+    opts = [o.strip() for o in q.get("options", [])]
+    lowered = [o.lower() for o in opts]
+    if any(k in o for o in lowered for k in ("all of the above", "none of the above", "both ")):
+        issues.append("No 'all/none of the above' or 'both' options.")
+    if any(re.search(r"\b(always|never)\b", o) for o in lowered):
+        issues.append("Remove absolute words (always, never) from the options.")
+    lengths = [len(o) for o in opts if o]
+    if lengths and max(lengths) > 2.5 * min(lengths):
+        issues.append("Make all four options similar in length and tone.")
+    if len(set(lowered)) < len(lowered):
+        issues.append("All four options must be different.")
+    return issues
 
 
 _BLOOM_LEVELS = {"knowledge", "comprehension", "application", "analysis", "synthesis", "evaluation"}
