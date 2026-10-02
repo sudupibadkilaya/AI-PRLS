@@ -107,6 +107,7 @@ async def make_question(
     if best is None:
         raise ValueError(f"No valid question after retries: {last_error}")
     q = best[1]
+    q.pop("_key_conflict", None)
     if chapter:
         q["chapter"] = chapter  # the requested chapter is authoritative
     return q
@@ -156,6 +157,10 @@ def quality_issues(q: dict) -> list[str]:
         issues.append("Make all four options similar in length and tone.")
     if len(set(lowered)) < len(lowered):
         issues.append("All four options must be different.")
+    if q.get("_key_conflict"):
+        issues.append("The answer key and the rationales disagree about which option is correct. "
+                      "Make 'correct' and the rationales consistent, with rationales in the same "
+                      "order as the options.")
     return issues
 
 
@@ -176,6 +181,49 @@ def _validate_question(q: dict) -> None:
         raise ValueError("Recall-level item; NBCOT practice needs case reasoning")
     if not q.get("reasoning_principle"):
         q["reasoning_principle"] = "Prioritize the option that best matches this client's current stage and safety needs."
+    _align_rationales(q)
+
+
+_LABEL_RE = re.compile(
+    r"^\s*(?:option\s*)?(?:[A-D]\s*[\).:\-\u2014]\s*)?(?:\u2014\s*)?"
+    r"(?P<label>correct|incorrect|right|wrong|best answer|not the best( choice)?)\s*[:.\-\u2014]\s*",
+    re.I)
+_STOP = {"the", "and", "for", "with", "this", "that", "client", "clients", "client's", "therapist",
+         "would", "should", "because", "their", "from", "into", "they", "them", "more", "most",
+         "than", "will", "have", "been", "before", "after", "about", "which", "while"}
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 3 and w not in _STOP}
+
+
+def _align_rationales(q: dict) -> None:
+    """The model sometimes lists rationales in a different order than the
+    options. Match each rationale to the option it discusses, drop the model's
+    own Correct/Incorrect labels, and relabel from the real answer key."""
+    import itertools
+    opts, rats = q["options"], list(q.get("rationales", []))
+    if len(rats) != len(opts):
+        return
+    labels, texts = [], []
+    for r in rats:
+        m = _LABEL_RE.match(r or "")
+        lab = (m.group("label").lower() if m else "")
+        labels.append(lab in ("correct", "right", "best answer"))
+        texts.append(r[m.end():].strip() if m else (r or "").strip())
+    ow, rw = [_words(o) for o in opts], [_words(t) for t in texts]
+    score = lambda i, j: len(ow[i] & rw[j])
+    ident = sum(score(i, i) for i in range(len(opts)))
+    best = max(itertools.permutations(range(len(opts))),
+               key=lambda p: sum(score(i, p[i]) for i in range(len(opts))))
+    if sum(score(i, best[i]) for i in range(len(opts))) > ident:
+        texts = [texts[best[i]] for i in range(len(opts))]
+        labels = [labels[best[i]] for i in range(len(opts))]
+    key = q["correct"][0]
+    # The rationales argue for a different option than the answer key.
+    q["_key_conflict"] = any(labels) and not labels[key]
+    q["rationales"] = [("Correct \u2014 " if i == key else "Not the best choice \u2014 ") + t
+                       for i, t in enumerate(texts)]
 
 
 async def scaffold(question: dict, selected: list[int], explanation: str,
