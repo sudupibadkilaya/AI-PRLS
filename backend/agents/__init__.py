@@ -113,6 +113,13 @@ async def make_question(
     return q
 
 
+_PT_RE = re.compile(r"\b(gait|ambulat\w*|stairs?|walking|walker training|quadriceps|hamstrings?|"
+                    r"strengthening exercises?|strengthen(ing)? the (leg|knee|hip|thigh)|range[- ]of[- ]motion "
+                    r"exercises?|manual therapy|joint mobili[sz]ation|therapeutic ultrasound|transfers? training)\b")
+_OCC_RE = re.compile(r"\b(adl|iadl|dress\w*|bath\w*|shower\w*|toilet\w*|groom\w*|feed\w*|eat\w*|cook\w*|"
+                     r"meal|kitchen|laundry|home|household|work\w*|job|school|leisure|play|occupation\w*|"
+                     r"daily (activities|living|tasks|routine)|routine|adaptive|assistive|equipment|environment\w*|"
+                     r"modif\w*|compensatory|energy conservation|caregiver|task|activity)\b")
 _KEYWORD_RE = re.compile(r"\b(FIRST|NEXT|MOST|BEST|PRIMARY|PRIORITY|CONTRAINDICATED)\b")
 _NEGATIVE_RE = re.compile(r"\b(EXCEPT|NOT|LEAST)\b")
 _CUE_RE = re.compile(r"\b(may|might|could)\b", re.I)
@@ -157,6 +164,15 @@ def quality_issues(q: dict) -> list[str]:
         issues.append("Make all four options similar in length and tone.")
     if len(set(lowered)) < len(lowered):
         issues.append("All four options must be different.")
+    key_text = opts[q["correct"][0]].lower() if opts and q.get("correct") else ""
+    if _PT_RE.search(key_text) and not _OCC_RE.search(key_text):
+        issues.append("The correct answer is a physical therapy intervention. Make the correct answer an "
+                      "occupation-based OT action (adapting the task or environment, adaptive equipment, "
+                      "ADL/IADL training in a meaningful occupation, compensatory strategies, caregiver "
+                      "training) and center the case on occupational performance.")
+    if _PT_RE.search(stem.lower()) and not _OCC_RE.search(stem.lower()):
+        issues.append("Center the case on an occupational performance problem (self-care, home, work, "
+                      "school, leisure), not on walking, stairs or strength alone.")
     if q.get("_key_conflict"):
         issues.append("The answer key and the rationales disagree about which option is correct. "
                       "Make 'correct' and the rationales consistent, with rationales in the same "

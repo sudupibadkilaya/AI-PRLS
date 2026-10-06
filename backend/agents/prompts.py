@@ -141,6 +141,22 @@ HOW TO WRITE THE STEM (the study team's item-writing standard):
   goal). A student who only knows a definition should not get it right.
 - Entry-level practice only — nothing that needs advanced certification.
 
+OCCUPATIONAL THERAPY SCOPE (very important): this is OT practice, not physical
+therapy. The correct answer must be an OCCUPATION-BASED OT action: engaging
+the client in or adapting meaningful occupations (ADLs, IADLs, work, school,
+play, leisure, rest, social participation), task or activity analysis,
+modifying the task or environment, adaptive equipment and assistive
+technology, compensatory or energy-conservation strategies, training the
+client or caregiver, client-centered goal setting, or occupation-focused
+assessment. The case itself should center on a problem with occupational
+performance (e.g. getting into the shower, dressing, cooking, returning to
+work), not on walking, stairs or muscle strength alone. Do NOT make the
+correct answer a physical therapy intervention such as gait training, stair
+training, ambulation, strengthening exercises for a muscle group, joint
+range-of-motion exercises, manual therapy or joint mobilization. A PT-type
+action may appear only as a wrong option (for example, a body-function
+exercise when the stem asks about occupation).
+
 HOW TO WRITE THE OPTIONS:
 - Exactly 4 options. All are actions or decisions an OT could reasonably
   consider; all similar in length, grammar and tone; clearly distinct from
