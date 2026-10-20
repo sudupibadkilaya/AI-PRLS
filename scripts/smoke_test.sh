@@ -131,6 +131,17 @@ _, r = call("/api/chat", {"study_id": S, "message": "quiz me"})
 check("student receives the coaching note once", r.get("instructor_note", "").startswith("Ask what"))
 _, r = call("/api/chat", {"study_id": S, "message": "hello"})
 check("coaching note not repeated", "instructor_note" not in r)
+# Open chat ("like ChatGPT"): free conversation that keeps its own thread
+_, o1 = call("/api/open_chat", {"study_id": S, "message": "What is task analysis?"})
+check("open chat answers", o1.get("route") == "open" and o1.get("thread_id") and o1.get("text"))
+_, o2 = call("/api/open_chat", {"study_id": S, "message": "Can you give an example?", "thread_id": o1["thread_id"]})
+check("open chat keeps the conversation", o2.get("thread_id") == o1["thread_id"] and "1 earlier" in o2.get("text", ""))
+_, o3 = call("/api/open_chat", {"study_id": S, "message": "New topic"})
+check("new open chat starts a fresh thread", o3.get("thread_id") != o1["thread_id"] and "0 earlier" in o3.get("text", ""))
+_, oc = call(f"/api/instructor/open_chats?study_id={S}", key=K)
+check("instructor sees open chats", len(oc) == 2 and len(next(t for t in oc if t["thread_id"] == o1["thread_id"])["messages"]) == 4)
+_, r = call("/api/chat", {"study_id": S, "message": "hello"})
+check("tutor still works after open chat", r.get("route") == "chat")
 raise SystemExit(0 if ok else 1)
 PYEOF
 

@@ -2,6 +2,9 @@
 
 const $ = (sel) => document.querySelector(sel);
 let studyId = null;
+let openMode = false;     // open chat ("like ChatGPT") vs the structured tutor
+let openThread = null;    // current open-chat conversation id (server-assigned)
+const pane = () => (openMode ? $("#open-messages") : $("#messages"));
 
 /* ---------- login ---------- */
 $("#login-btn").addEventListener("click", async () => {
@@ -56,6 +59,7 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 }).catch(() => {});
 
 $("#session-start-btn").addEventListener("click", () => {
+  setOpenMode(false);
   const chapter = parseInt($("#chapter-select").value, 10) || null;
   addStudent(`Start a ${sessionLength}-question session on Chapter ${chapter}.`);
   callApi("/api/session/start", { study_id: studyId, chapter });
@@ -95,14 +99,91 @@ async function callApi(url, body) {
 
 /* ---------- sidebar shortcuts ---------- */
 document.querySelectorAll(".nav-btn[data-prompt]").forEach((b) =>
-  b.addEventListener("click", () => sendMessage(b.dataset.prompt))
+  b.addEventListener("click", () => { setOpenMode(false); sendMessage(b.dataset.prompt); })
 );
+
+/* ---------- open chat ("like ChatGPT") ----------
+   A free conversation kept separate from the tutor: its own message list and
+   conversation thread, so follow-up questions keep their context. */
+const TUTOR_PLACEHOLDER = $("#input").placeholder;
+function setOpenMode(on) {
+  openMode = on;
+  $("#chat-pane").classList.toggle("open-mode", on);
+  $("#open-chat-btn").classList.toggle("active", on);
+  $("#input").placeholder = on
+    ? "Ask anything — e.g. \u201cWhat's the difference between remediation and compensation?\u201d"
+    : TUTOR_PLACEHOLDER;
+  if (on && !$("#open-messages").children.length) openWelcome();
+  $("#input").focus();
+}
+function openWelcome() {
+  addTutorText(
+    "This is an open chat. Ask me anything about OT practice or the NBCOT exam, " +
+    "in your own words, and ask follow-up questions as we go. For practice " +
+    "questions and reasoning feedback, use the tutor (Back to tutor)."
+  );
+}
+$("#open-chat-btn").addEventListener("click", () => setOpenMode(true));
+$("#open-back-btn").addEventListener("click", () => setOpenMode(false));
+$("#open-new-btn").addEventListener("click", () => {
+  openThread = null;
+  $("#open-messages").textContent = "";
+  openWelcome();
+  $("#input").focus();
+});
+
+async function sendOpen(text) {
+  addStudent(text);
+  const pending = addThinking();
+  setBusy(true);
+  try {
+    const res = await fetch("/api/open_chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ study_id: studyId, message: text, thread_id: openThread }),
+    });
+    const data = await res.json();
+    pending.remove();
+    if (!res.ok) throw new Error();
+    openThread = data.thread_id || openThread;
+    addTutorText(data.text, data.message_id, true);
+  } catch {
+    pending.remove();
+    addTutorText("Something went wrong reaching the server. Please try again.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* Light, safe formatting for open-chat replies: paragraphs, "- " / "1." lists
+   and **bold**. Text is escaped first, so no HTML from the model is rendered. */
+function renderLightMarkdown(text) {
+  const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  let html = "", list = null;
+  const close = () => { if (list) { html += `</${list}>`; list = null; } };
+  for (const raw of String(text || "").split("\n")) {
+    const line = raw.trim();
+    const ul = line.match(/^[-*\u2022]\s+(.*)/), ol = line.match(/^\d+[.)]\s+(.*)/);
+    if (ul || ol) {
+      const kind = ul ? "ul" : "ol";
+      if (list !== kind) { close(); html += `<${kind}>`; list = kind; }
+      html += `<li>${inline((ul || ol)[1])}</li>`;
+    } else if (!line) {
+      close();
+    } else {
+      close();
+      html += `<p>${inline(line)}</p>`;
+    }
+  }
+  close();
+  return html;
+}
 
 /* ---------- composer ---------- */
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = $("#input").value.trim();
-  if (text) { $("#input").value = ""; sendMessage(text); }
+  if (text) { $("#input").value = ""; openMode ? sendOpen(text) : sendMessage(text); }
 });
 $("#input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -158,17 +239,18 @@ function msgShell(who, cls) {
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   wrap.appendChild(bubble);
-  $("#messages").appendChild(wrap);
-  $("#messages").scrollTop = $("#messages").scrollHeight;
+  pane().appendChild(wrap);
+  pane().scrollTop = pane().scrollHeight;
   return bubble;
 }
 
 function addStudent(text) {
   msgShell("You", "student").textContent = text;
 }
-function addTutorText(text, messageId) {
+function addTutorText(text, messageId, formatted) {
   const b = msgShell("Tutor", "tutor");
-  b.textContent = text;
+  if (formatted) { b.classList.add("md"); b.innerHTML = renderLightMarkdown(text); }
+  else b.textContent = text;
   if (messageId) b.parentElement.appendChild(feedbackBar(messageId));
   scrollDown();
 }
@@ -178,7 +260,7 @@ function addThinking() {
   b.textContent = "Thinking\u2026";
   return b.parentElement;
 }
-function scrollDown() { $("#messages").scrollTop = $("#messages").scrollHeight; }
+function scrollDown() { pane().scrollTop = pane().scrollHeight; }
 
 function feedbackBar(messageId) {
   const div = document.createElement("div");

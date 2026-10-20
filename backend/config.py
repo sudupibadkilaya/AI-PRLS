@@ -21,7 +21,12 @@ GEN = {
     "chat":     {"temperature": 0.5, "max_tokens": 400},
     "summary":  {"temperature": 0.4, "max_tokens": 900},
     "probe":    {"temperature": 0.5, "max_tokens": 300},
+    "open":     {"temperature": 0.6, "max_tokens": 1200},
 }
+
+# Open chat ("like ChatGPT", Dr. Dumitrescu): how many earlier turns of the
+# conversation the model sees with each new message.
+OPEN_CHAT_HISTORY = int(os.getenv("AIPRLS_OPEN_CHAT_HISTORY", "16"))
 
 # --- Chapter practice sessions ("select a chapter, 20 questions, summary") ---
 SESSION_LENGTH = int(os.getenv("AIPRLS_SESSION_LENGTH", "20"))

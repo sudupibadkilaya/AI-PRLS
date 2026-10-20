@@ -27,6 +27,12 @@ class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class OpenChatBody(BaseModel):
+    study_id: str
+    message: str = Field(min_length=1, max_length=4000)
+    thread_id: str | None = Field(default=None, max_length=64)
+
+
 class AnswerBody(BaseModel):
     study_id: str
     selected: list[int]
@@ -89,6 +95,13 @@ async def chat(body: ChatBody):
     sid = body.study_id.strip()
     return orchestrator.attach_instructor_note(
         sid, await orchestrator.handle_chat(sid, body.message.strip())
+    )
+
+
+@app.post("/api/open_chat")
+async def open_chat(body: OpenChatBody):
+    return await orchestrator.handle_open_chat(
+        body.study_id.strip(), body.message.strip(), body.thread_id
     )
 
 
@@ -184,6 +197,11 @@ def instructor_students():
 @app.get("/api/instructor/attempts", dependencies=[Depends(require_instructor)])
 def instructor_attempts(study_id: str):
     return db.instructor_attempts(study_id.strip())
+
+
+@app.get("/api/instructor/open_chats", dependencies=[Depends(require_instructor)])
+def instructor_open_chats(study_id: str):
+    return db.open_threads(study_id)
 
 
 @app.get("/api/instructor/sessions", dependencies=[Depends(require_instructor)])

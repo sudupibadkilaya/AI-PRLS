@@ -78,6 +78,8 @@
         <button class="nav-btn" data-prompt="Quiz me with a practice question.">Practice a question</button>
         <button class="nav-btn" data-prompt="I want to understand a concept — let me tell you which.">Ask about a concept</button>
         <button class="nav-btn" data-prompt="How am I doing? Show my progress.">My progress</button>
+        <p class="nav-label nav-gap">Open chat</p>
+        <button id="open-chat-btn" class="nav-btn">Ask me anything</button>
       </nav>
       <div class="sidebar-foot">
         <p id="student-label"></p>
@@ -97,6 +99,15 @@
         <button id="session-end-btn" class="linklike">End session &amp; see summary</button>
       </div>
       <div id="messages"></div>
+      <div id="open-head">
+        <div>
+          <strong>Open chat</strong>
+          <span class="muted">Ask anything about OT or the NBCOT exam, in your own words. Follow-up questions keep the context.</span>
+        </div>
+        <button id="open-new-btn" class="linklike" type="button">New chat</button>
+        <button id="open-back-btn" class="linklike" type="button">Back to tutor</button>
+      </div>
+      <div id="open-messages"></div>
       <form id="composer">
         <textarea id="input" rows="1"
           placeholder='Try: "10 questions from chapter 14"  ·  "I don&#39;t understand splinting"  ·  "how am I doing?"'></textarea>

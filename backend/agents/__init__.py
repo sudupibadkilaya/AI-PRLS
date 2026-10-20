@@ -349,6 +349,19 @@ async def session_summary(report: dict, guidance: list[str] | None = None) -> st
     )
 
 
+async def open_chat(message: str, history: list[dict],
+                    guidance: list[str] | None = None) -> str:
+    """Free conversation (open chat). `history` is this thread's earlier turns."""
+    context = rag.context_block(message)
+    user_msg = (
+        f"Companion notes (the study team's own material; use only if relevant):\n"
+        f"{context}\n{_guidance_block(guidance)}\n"
+        f"Student: {message}"
+    )
+    convo = history + [{"role": "user", "content": user_msg}]
+    return await llm.chat("open", prompts.OPEN_CHAT, convo)
+
+
 async def small_talk(message: str, history: list[dict]) -> str:
     convo = history[-6:] + [{"role": "user", "content": message}]
     return await llm.chat("chat", prompts.CHAT, convo)

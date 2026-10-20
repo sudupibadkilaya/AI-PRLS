@@ -140,6 +140,18 @@ def _mock_summary(messages: list[dict]) -> str:
     )
 
 
+def _mock_open(messages: list[dict]) -> str:
+    """Open chat in mock mode: shows that earlier turns of the thread are passed in."""
+    asked = messages[-1]["content"].rsplit("Student:", 1)[-1].strip()
+    earlier = sum(1 for m in messages[:-1] if m["role"] == "user")
+    return (
+        f"(Mock open chat) You asked: \"{asked[:120]}\". "
+        f"I can see {earlier} earlier question(s) in this conversation.\n\n"
+        "- With the real model this is a free, ChatGPT-style answer.\n"
+        "- **Follow-up questions** keep the context of the conversation."
+    )
+
+
 async def chat(role: str, system: str, messages: list[dict]) -> str:
     """Send a chat completion request. `role` picks generation settings."""
     if config.MOCK_LLM:
@@ -159,6 +171,8 @@ async def chat(role: str, system: str, messages: list[dict]) -> str:
             return _mock_summary(messages)
         if role == "probe":
             return _mock_probe(messages)
+        if role == "open":
+            return _mock_open(messages)
         return _next_example("chat", _EXAMPLES["chat_replies"])
 
     gen = config.GEN.get(role, config.GEN["chat"])

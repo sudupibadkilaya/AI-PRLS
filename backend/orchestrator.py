@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
 
 from . import agents, config, db
 
@@ -180,6 +181,21 @@ async def handle_chat(study_id: str, message: str) -> dict:
         text = await agents.small_talk(message, history)
     mid = db.log_message(study_id, "assistant", text, route)
     return {"type": "text", "text": text, "message_id": mid, "route": route}
+
+
+async def handle_open_chat(study_id: str, message: str, thread_id: str | None) -> dict:
+    """Open chat ("like ChatGPT"): a free conversation kept apart from the tutor."""
+    thread_id = thread_id or uuid.uuid4().hex
+    history = db.open_thread_messages(study_id, thread_id, config.OPEN_CHAT_HISTORY)
+    db.log_message(study_id, "student", message, "open", thread_id)
+    try:
+        text = await agents.open_chat(message, history, guidance=db.active_guidance(study_id))
+    except Exception:
+        return {"type": "text", "route": "open", "thread_id": thread_id, "message_id": None,
+                "text": "Sorry, I couldn't reach the AI model just now. Please try again in a moment."}
+    mid = db.log_message(study_id, "assistant", text, "open", thread_id)
+    return {"type": "text", "text": text, "message_id": mid, "route": "open",
+            "thread_id": thread_id}
 
 
 async def handle_answer(study_id: str, selected: list[int], explanation: str) -> dict:

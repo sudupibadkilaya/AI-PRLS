@@ -112,6 +112,7 @@ def init() -> None:
             "ALTER TABLE attempts ADD COLUMN reasoning_quality TEXT",
             "ALTER TABLE attempts ADD COLUMN probe_turns INTEGER DEFAULT 0",
             "ALTER TABLE attempts ADD COLUMN max_support_level INTEGER",
+            "ALTER TABLE messages ADD COLUMN thread_id TEXT",
         ):
             try:
                 con.execute(stmt)
@@ -127,13 +128,14 @@ def register_student(study_id: str) -> None:
         )
 
 
-def log_message(study_id: str, role: str, content: str, route: str | None = None) -> str:
+def log_message(study_id: str, role: str, content: str, route: str | None = None,
+                thread_id: str | None = None) -> str:
     mid = uuid.uuid4().hex
     with _conn() as con:
         con.execute(
-            "INSERT INTO messages (id, study_id, ts, role, route, content) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (mid, study_id, time.time(), role, route, content),
+            "INSERT INTO messages (id, study_id, ts, role, route, content, thread_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (mid, study_id, time.time(), role, route, content, thread_id),
         )
     return mid
 
@@ -267,13 +269,47 @@ def _aggregate(rows) -> dict:
 def recent_messages(study_id: str, n: int = 8) -> list[dict]:
     with _conn() as con:
         rows = con.execute(
-            "SELECT role, content FROM messages WHERE study_id=? ORDER BY ts DESC LIMIT ?",
+            "SELECT role, content FROM messages WHERE study_id=? "
+            "AND (route IS NULL OR route != 'open') ORDER BY ts DESC LIMIT ?",
             (study_id, n),
         ).fetchall()
     return [
         {"role": "user" if r["role"] == "student" else "assistant", "content": r["content"]}
         for r in reversed(rows)
     ]
+
+
+# --- open chat ("like ChatGPT") -------------------------------------------------
+# Kept apart from the tutor conversation: open-chat turns are logged with
+# route='open' and a thread_id, and never feed the structured tutor's history.
+
+def open_thread_messages(study_id: str, thread_id: str, n: int = 16) -> list[dict]:
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT role, content FROM messages WHERE study_id=? AND route='open' "
+            "AND thread_id=? ORDER BY ts DESC LIMIT ?",
+            (study_id, thread_id, n),
+        ).fetchall()
+    return [
+        {"role": "user" if r["role"] == "student" else "assistant", "content": r["content"]}
+        for r in reversed(rows)
+    ]
+
+
+def open_threads(study_id: str) -> list[dict]:
+    """Every open-chat conversation for one student, oldest message first."""
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT thread_id, role, content, ts FROM messages WHERE study_id=? "
+            "AND route='open' ORDER BY ts",
+            (study_id,),
+        ).fetchall()
+    threads: dict[str, dict] = {}
+    for r in rows:
+        t = threads.setdefault(r["thread_id"], {"thread_id": r["thread_id"],
+                                                "started_at": r["ts"], "messages": []})
+        t["messages"].append({"role": r["role"], "content": r["content"], "ts": r["ts"]})
+    return sorted(threads.values(), key=lambda t: t["started_at"], reverse=True)
 
 
 # --- chapter practice sessions ------------------------------------------------

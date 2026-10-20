@@ -109,12 +109,13 @@
     const d = $("#student-detail");
     d.textContent = "Loading…";
     const q = "?study_id=" + encodeURIComponent(studyId);
-    let attempts, sessions, notes;
+    let attempts, sessions, notes, openChats;
     try {
-      [attempts, sessions, notes] = await Promise.all([
+      [attempts, sessions, notes, openChats] = await Promise.all([
         api("/api/instructor/attempts" + q),
         api("/api/instructor/sessions" + q),
         api("/api/instructor/coach" + q),
+        api("/api/instructor/open_chats" + q).catch(() => []),
       ]);
     } catch (e) { d.textContent = e.message; return; }
 
@@ -125,7 +126,8 @@
     const refl = attempts.filter((a) => a.reflection).length;
     d.appendChild(el("p", "muted",
       `${attempts.length} questions answered · ${correct} correct · ` +
-      `${scaff} needed a hint · ${refl} reflections · ${sessions.length} chapter session(s)`));
+      `${scaff} needed a hint · ${refl} reflections · ${sessions.length} chapter session(s) · ` +
+      `${openChats.length} open chat(s)`));
 
     d.appendChild(coachBox(studyId, notes));
 
@@ -140,6 +142,27 @@
           `Chapter ${s.chapter ?? "–"} · ${s.correct}/${s.answered} correct of ` +
           `${s.total_questions} · ${status} · ${fmtTime(s.started_at)}`));
         det.appendChild(el("div", null, s.summary || "(No summary yet.)"));
+        sec.appendChild(det);
+      });
+      d.appendChild(sec);
+    }
+
+    // Open chat conversations (free questions, "like ChatGPT")
+    if (openChats.length) {
+      const sec = el("div", "idash-section");
+      sec.appendChild(el("p", "nav-label", "Open chat conversations"));
+      openChats.forEach((t) => {
+        const det = el("details", "session-sum");
+        const qs = t.messages.filter((m) => m.role === "student");
+        det.appendChild(el("summary", null,
+          `${fmtTime(t.started_at)} · ${qs.length} question(s) · ` +
+          `“${(qs[0] ? qs[0].content : "").slice(0, 80)}”`));
+        const box = el("div", "dialogue");
+        t.messages.forEach((m) => {
+          box.appendChild(el("p", m.role === "student" ? "s" : "t",
+            (m.role === "student" ? "Student: " : "AI: ") + m.content));
+        });
+        det.appendChild(box);
         sec.appendChild(det);
       });
       d.appendChild(sec);
