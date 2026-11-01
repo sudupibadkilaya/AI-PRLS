@@ -42,6 +42,7 @@ async def make_question(
     position: tuple[int, int] | None = None,
     guidance: list[str] | None = None,
     avoid_cases: list[dict] | None = None,
+    practice_area: str | None = None,
 ) -> dict:
     """Generate one original NBCOT-style item, grounded in companion notes.
 
@@ -71,6 +72,10 @@ async def make_question(
             "and vary the NBCOT domain across the session.\n"
         )
     variety_note = _variety_note(avoid_cases)
+    if practice_area:
+        variety_note = (f"PRACTICE AREA for this question: {practice_area}. Choose a client and "
+                        "diagnosis from this area (unless the requested chapter's content clearly "
+                        "cannot fit it).\n") + variety_note
     user_msg = (
         f"Requested chapter: {chapter_line}\n"
         f"Requested topic: {topic}\n{session_note}{variety_note}\n"
@@ -99,6 +104,8 @@ async def make_question(
             ]
             continue
         issues = [] if config.MOCK_LLM else quality_issues(q) + variety_issues(q, avoid_cases)
+        if not issues and not config.MOCK_LLM:
+            issues = await key_check(q)
         if best is None or len(issues) < best[0]:
             best = (len(issues), q)
         if not issues:
@@ -117,9 +124,33 @@ async def make_question(
     return q
 
 
+async def key_check(q: dict) -> list[str]:
+    """Have the model answer the finished item on its own. If it picks a
+    different option, the key is wrong or two options are defensible."""
+    letters = "ABCD"
+    item = q["stem"] + "\n" + "\n".join(f"{letters[i]}. {o}" for i, o in enumerate(q["options"]))
+    try:
+        raw = await llm.chat("solver", prompts.ITEM_CHECKER, [{"role": "user", "content": item}])
+        r = llm.extract_json(raw)
+        pick = letters.index(str(r.get("answer", "")).strip().upper()[:1])
+    except (ValueError, json.JSONDecodeError, IndexError):
+        return []  # checker unavailable: do not block the item
+    key = q["correct"][0]
+    if pick == key:
+        return []
+    return [f"An independent OT reviewer chose {letters[pick]} instead of {letters[key]}: "
+            f"{str(r.get('reason', ''))[:300]} Either the answer key is wrong or two options are "
+            "defensible. Make exactly one option clearly best for an entry-level OT (fix the key "
+            "or rewrite the options), and keep the rationales consistent."]
+
+
 _PT_RE = re.compile(r"\b(gait|ambulat\w*|stairs?|walking|walker training|quadriceps|hamstrings?|"
                     r"strengthening exercises?|strengthen(ing)? the (leg|knee|hip|thigh)|range[- ]of[- ]motion "
                     r"exercises?|manual therapy|joint mobili[sz]ation|therapeutic ultrasound|transfers? training)\b")
+# Correct answers that are outside OT scope (medication, oxygen, exercise-only programs).
+_SCOPE_RE = re.compile(r"\b(oxygen|medications?|pharmacolog\w*|psychotherap\w*|cognitive behavio\w* therapy)\b")
+_EXERCISE_RE = re.compile(r"\b(core (stability|strength\w*)|(home )?exercise program|strength(ening)? training|"
+                          r"endurance training|flexibility|stretching exercises?|aerobic)\b")
 _OCC_RE = re.compile(r"\b(adl|iadl|dress\w*|bath\w*|shower\w*|toilet\w*|groom\w*|feed\w*|eat\w*|cook\w*|"
                      r"meal|kitchen|laundry|home|household|work\w*|job|school|leisure|play|occupation\w*|"
                      r"daily (activities|living|tasks|routine)|routine|adaptive|assistive|equipment|environment\w*|"
@@ -129,6 +160,24 @@ _NEGATIVE_RE = re.compile(r"\b(EXCEPT|NOT|LEAST)\b")
 _CUE_RE = re.compile(r"\b(may|might|could)\b", re.I)
 _NAME_RE = re.compile(r"\b(Mr|Mrs|Ms|Miss|Dr)\.?\s+[A-Z]|\bnamed\s+[A-Z]")
 _RECALL_RE = re.compile(r"^(what is the (definition|meaning|name|underlying cause|cause)|which of the following (is|defines|describes)|what does .* stand for)", re.I)
+
+
+_SYNONYMS = {"slide": "transfer", "sliding": "transfer", "transfers": "transfer",
+             "adaptive": "assistive", "techniques": "technique", "strategies": "strategy",
+             "exercises": "exercise", "devices": "device", "aids": "device", "aid": "device"}
+_GENERIC = {"recommend", "teach", "provide", "implement", "encourage", "instruct", "using", "use",
+            "develop", "educate", "suggest", "advise", "client", "therapist", "patient", "help"}
+
+
+def _option_words(text: str) -> set[str]:
+    """Content words of an option, with common synonyms merged, for spotting
+    two options that describe the same action."""
+    out = set()
+    for w in re.findall(r"[a-z]+", text.lower()):
+        w = _SYNONYMS.get(w, w)
+        if len(w) > 3 and w not in _STOP and w not in _GENERIC:
+            out.add(w[:-1] if w.endswith("s") and not w.endswith("ss") else w)
+    return out
 
 
 def quality_issues(q: dict) -> list[str]:
@@ -174,6 +223,11 @@ def quality_issues(q: dict) -> list[str]:
                       "occupation-based OT action (adapting the task or environment, adaptive equipment, "
                       "ADL/IADL training in a meaningful occupation, compensatory strategies, caregiver "
                       "training) and center the case on occupational performance.")
+    occ_text = re.sub(r"home exercise program", "", key_text)
+    if _SCOPE_RE.search(key_text) or (_EXERCISE_RE.search(key_text) and not _OCC_RE.search(occ_text)):
+        issues.append("The correct answer is outside OT scope (OTs do not prescribe medication or oxygen, "
+                      "and an exercise program alone is physical therapy). Make the correct answer an "
+                      "occupation-based OT action.")
     if _PT_RE.search(stem.lower()) and not _OCC_RE.search(stem.lower()):
         issues.append("Center the case on an occupational performance problem (self-care, home, work, "
                       "school, leisure), not on walking, stairs or strength alone.")
@@ -181,6 +235,25 @@ def quality_issues(q: dict) -> list[str]:
         issues.append("The answer key and the rationales disagree about which option is correct. "
                       "Make 'correct' and the rationales consistent, with rationales in the same "
                       "order as the options.")
+    # Two options that say the same thing (e.g. "slide board" / "transfer board").
+    ow = [_option_words(o) for o in opts]
+    for i in range(len(ow)):
+        for j in range(i + 1, len(ow)):
+            small = min(len(ow[i]), len(ow[j]))
+            if small >= 2 and len(ow[i] & ow[j]) / small >= 0.6:
+                issues.append(f"Options {chr(65 + i)} and {chr(65 + j)} "
+                              "are nearly the same. Every option must be a clearly different action.")
+                break
+        else:
+            continue
+        break
+    # The stem must not give the answer away (e.g. "due to pain and stiffness" -> "Pain and stiffness").
+    if key_text:
+        kw = _words(key_text)
+        sw = _words(stem)
+        if len(kw) >= 2 and len(kw & sw) / len(kw) >= 0.75:
+            issues.append("The correct option repeats words from the stem, so the stem gives the answer "
+                          "away. Do not state the answer in the case; the student must infer it.")
     return issues
 
 
@@ -225,6 +298,16 @@ def _variety_note(avoid_cases: list[dict] | None) -> str:
     if openings:
         lines.append("- Earlier stems began like this: " + " | ".join(f'"{o}..."' for o in openings)
                      + ". Begin this stem with different wording.")
+    asks = [c["ask"] for c in avoid_cases[-6:] if c.get("ask")]
+    if asks:
+        lines.append("- Earlier questions asked: " + " | ".join(f'"{a}"' for a in asks)
+                     + ". Ask a DIFFERENT kind of decision this time (e.g. which assessment to "
+                     "use, a safety precaution, grading or adapting an activity, adaptive "
+                     "equipment, caregiver or client education, discharge or referral, "
+                     "documentation, or a group or community intervention).")
+    lines.append("- Do not repeat a client situation or answer pattern already used, even "
+                 "under a different diagnosis name (e.g. several pain/fatigue cases answered "
+                 "with pacing).")
     return "\n".join(lines) + "\n"
 
 
@@ -233,21 +316,35 @@ def variety_issues(q: dict, avoid_cases: list[dict] | None) -> list[str]:
     if not avoid_cases:
         return []
     issues = []
-    recent = [c.get("diagnosis", "") for c in avoid_cases[-4:]]
-    if q.get("diagnosis") and any(_same_diagnosis(q["diagnosis"], d) for d in recent if d):
-        issues.append("Use a different diagnosis: the last questions already used "
-                      + "; ".join(d for d in recent if d) + ".")
+    used = [c.get("diagnosis", "") for c in avoid_cases]
+    if q.get("diagnosis") and any(_same_diagnosis(q["diagnosis"], d) for d in used if d):
+        issues.append("Use a diagnosis not used yet in this quiz. Already used: "
+                      + "; ".join(d for d in used if d) + ".")
     op = _opening(q.get("stem", ""))
     if op and any(op == c.get("opening_key") for c in avoid_cases[-5:]):
         issues.append("Start the stem with different wording from the earlier questions.")
+    ask = _ask_key(q.get("stem", ""))
+    if ask and any(ask == c.get("ask_key") for c in avoid_cases[-3:]):
+        issues.append("The final question is worded like a recent one. Ask a different kind of decision.")
     return issues
+
+
+def _last_question(stem: str) -> str:
+    parts = [x for x in re.split(r"(?<=[.?!])\s+", (stem or "").strip()) if x]
+    return parts[-1] if parts else ""
+
+
+def _ask_key(stem: str) -> str:
+    """'What is the PRIMARY factor contributing to...' -> 'what is the primary factor'."""
+    return " ".join(_wordlist(_last_question(stem))[:5])
 
 
 def case_signature(q: dict) -> dict:
     """What later items in the same quiz should avoid repeating."""
     stem = q.get("stem", "")
     return {"diagnosis": q.get("diagnosis", ""), "setting": q.get("setting", ""),
-            "opening": " ".join(stem.split()[:8]), "opening_key": _opening(stem)}
+            "opening": " ".join(stem.split()[:8]), "opening_key": _opening(stem),
+            "ask": " ".join(_last_question(stem).split()[:9]), "ask_key": _ask_key(stem)}
 
 
 def _validate_question(q: dict) -> None:
@@ -433,6 +530,9 @@ async def open_chat(message: str, history: list[dict],
 
 async def quiz_summary(report: dict, guidance: list[str] | None = None) -> str:
     """Short performance report after a timed quiz."""
+    def mmss(sec):
+        sec = int(round(sec or 0))
+        return f"{sec // 60} min {sec % 60} s"
     compact = {k: v for k, v in report.items() if k != "questions"}
     compact["questions"] = []
     for x in report.get("questions", []):
@@ -445,11 +545,24 @@ async def quiz_summary(report: dict, guidance: list[str] | None = None) -> str:
             "chose": opts[pick] if isinstance(pick, int) and pick < len(opts) else None,
             "correct": opts[key] if isinstance(key, int) and key < len(opts) else None,
         })
+    missed = [q for q in compact["questions"] if q["result"] != "correct"]
+    facts = [
+        f"Score: {report.get('correct', 0)} of {report.get('planned_questions', 0)} correct "
+        f"({report.get('answered', 0)} answered, {report.get('unanswered', 0)} unanswered).",
+        f"Time used: {mmss(report.get('time_used'))} of {mmss(report.get('time_limit'))}"
+        + (" (time ran out)." if report.get("timed_out") else "."),
+        f"Average time per answered question: {mmss(report.get('avg_seconds'))}.",
+        "By domain: " + "; ".join(f"Domain {d}: {v['correct']} of {v['answered']} correct"
+                                 for d, v in sorted((report.get("by_domain") or {}).items())) + ".",
+        "Missed questions: " + ("; ".join(
+            f"#{q['number']} {q.get('diagnosis') or q.get('topic')} (Domain {q.get('domain')}): chose "
+            f"\"{q.get('chose')}\", correct \"{q.get('correct')}\"" for q in missed) or "none") + ".",
+    ]
     return await llm.chat(
         "summary",
         prompts.QUIZ_REPORT,
-        [{"role": "user", "content": f"Quiz report JSON:\n{json.dumps(compact, indent=2)}"
-          + _guidance_block(guidance)}],
+        [{"role": "user", "content": "Quiz report JSON (FACTS first):\nFACTS\n- " + "\n- ".join(facts)
+          + f"\n\nFull report:\n{json.dumps(compact, indent=2)}" + _guidance_block(guidance)}],
     )
 
 

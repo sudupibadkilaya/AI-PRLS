@@ -213,6 +213,8 @@ function renderLightMarkdown(text) {
   const close = () => { if (list) { html += `</${list}>`; list = null; } };
   for (const raw of String(text || "").split("\n")) {
     const line = raw.trim();
+    const hd = line.match(/^#{1,6}\s+(.*)/);
+    if (hd) { close(); html += `<p class="md-h">${inline(hd[1])}</p>`; continue; }
     const ul = line.match(/^[-*\u2022]\s+(.*)/), ol = line.match(/^\d+[.)]\s+(.*)/);
     if (ul || ol) {
       const kind = ul ? "ul" : "ol";
@@ -576,8 +578,8 @@ function renderQuizReport(data) {
   }
 
   const t = document.createElement("div");
-  t.className = "summary-text";
-  t.textContent = data.text;
+  t.className = "summary-text bubble md";
+  t.innerHTML = renderLightMarkdown(data.text);
   b.appendChild(t);
 
   if (r.questions && r.questions.length) {
@@ -591,7 +593,7 @@ function renderQuizReport(data) {
       det.className = "qreview " + (ok ? "rv-ok" : "rv-no");
       const sum = document.createElement("summary");
       sum.textContent = `${q.number}. ${ok ? "✓ Correct" : "✗ Incorrect"} — ` +
-        (q.diagnosis ? q.diagnosis + " · " : "") + (q.topic || "");
+        [q.diagnosis, q.topic && q.topic !== "general" ? q.topic : ""].filter(Boolean).join(" \u00b7 ");
       det.appendChild(sum);
       const stem = document.createElement("div");
       stem.className = "qstem";

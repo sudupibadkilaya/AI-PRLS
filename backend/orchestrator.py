@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 import time
 import uuid
@@ -348,14 +349,30 @@ def _session_info(study_id: str) -> dict | None:
     return {"number": s["current"], "total": s["total"], "chapter": s["chapter"]}
 
 
+# Rotate across practice areas so a quiz is not several cases of the same kind
+# (e.g. three chronic pain / fatigue cases answered with pacing).
+PRACTICE_AREAS = [
+    "neurological rehabilitation (e.g. stroke, brain injury, spinal cord injury, MS, Parkinson's)",
+    "orthopedics, hand and upper extremity (e.g. fractures, tendon repair, joint replacement)",
+    "mental health (e.g. schizophrenia, bipolar disorder, depression, anxiety, substance use)",
+    "pediatrics (e.g. autism, cerebral palsy, developmental delay, sensory processing, school-based)",
+    "older adults and cognition (e.g. dementia, low vision, fall prevention, aging in place)",
+    "medical and cardiopulmonary (e.g. COPD, heart failure, cancer, burns, diabetes, amputation)",
+    "work, community and wellness (e.g. ergonomics, return to work, driving, home modification)",
+    "rheumatology and chronic conditions (e.g. arthritis, chronic pain, fibromyalgia)",
+]
+
+
 async def _write_quiz_question(study_id: str, sess: dict) -> dict:
     written = sess["served"] + sess["ready"]
+    areas = sess.setdefault("areas", random.sample(PRACTICE_AREAS, len(PRACTICE_AREAS)))
     q = await agents.make_question(
         study_id, sess["chapter"], "general",
         avoid_topics=[x.get("topic") for x in written if x.get("topic")],
         position=(len(written) + 1, sess["total"]),
         guidance=db.active_guidance(study_id),
         avoid_cases=[agents.case_signature(x) for x in written],
+        practice_area=areas[len(written) % len(areas)],
     )
     if sess["chapter"]:
         q["chapter"] = sess["chapter"]

@@ -553,6 +553,22 @@ terms; no headings, tables or emoji.
 
 
 # ---------------------------------------------------------------------------
+# 8b) Item checker — answers a new item independently to catch wrong keys
+# ---------------------------------------------------------------------------
+ITEM_CHECKER = """You are an experienced occupational therapy faculty member who writes
+and reviews NBCOT-style certification items.
+
+Answer the item below as an entry-level OTR would on the exam. Choose the ONE
+best answer. Remember the exam's logic: occupation-based OT practice; evaluate
+before intervening when the cause is unclear; safety first; stay within OT
+scope (an OT does not prescribe medication or oxygen, and strength or
+endurance exercise programs alone are physical therapy).
+
+Output ONLY JSON: {"answer": "A" | "B" | "C" | "D",
+                   "reason": "<one sentence>"}
+"""
+
+# ---------------------------------------------------------------------------
 # 9) Quiz report — performance feedback after a timed quiz (Dr. Dumitrescu)
 # ---------------------------------------------------------------------------
 QUIZ_REPORT = SHARED_RULES + """
@@ -560,13 +576,15 @@ Your specific job: write the short performance report a student reads after
 a TIMED practice quiz (normally 20 exam-style questions, answered one after
 another with no hints, like the real exam).
 
-You will receive a JSON report for THIS QUIZ ONLY: the score, how many
-questions were answered in the time, the time used, accuracy by NBCOT domain,
-and every question with its topic, diagnosis, domain, whether it was correct,
-the option the student chose and the correct option.
+You will receive FACTS about THIS QUIZ ONLY (score, time used, results by
+NBCOT domain, and the list of missed and unanswered questions), followed by a
+JSON report with every question. Copy every number exactly from the FACTS. Do
+not compute your own times or counts, and do not describe a question as missed
+unless it is in the missed list.
 
-Write plain text under these headings (one short paragraph or 2-3 "- "
-bullets each):
+Write plain text with these four headings, each on its own line followed by a
+dash, like "Overall — ..." (never use # or markdown headings). One short
+paragraph or 2-3 "- " bullets each:
 
 Overall — the score and pace in one or two sentences, using the actual
 numbers (e.g. "14 of 20 correct in 22 minutes"). Never invent numbers. If

@@ -21,6 +21,7 @@ GEN = {
     "chat":     {"temperature": 0.5, "max_tokens": 400},
     "summary":  {"temperature": 0.4, "max_tokens": 900},
     "probe":    {"temperature": 0.5, "max_tokens": 300},
+    "solver":   {"temperature": 0.0, "max_tokens": 200},
     "open":     {"temperature": 0.6, "max_tokens": 1200},
 }
 
