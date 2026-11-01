@@ -134,13 +134,16 @@
     // Chapter sessions with the summative feedback the student saw
     if (sessions.length) {
       const sec = el("div", "idash-section");
-      sec.appendChild(el("p", "nav-label", "Chapter sessions"));
+      sec.appendChild(el("p", "nav-label", "Timed quizzes and chapter sessions"));
       sessions.forEach((s) => {
         const det = el("details", "session-sum");
         const status = s.completed_at ? (s.ended_early ? "ended early" : "completed") : "in progress";
+        const timed = s.mode === "timed"
+          ? ` · timed quiz${s.time_used != null ? `, ${Math.round(s.time_used / 60)} of ${Math.round((s.time_limit || 0) / 60)} min used` : ""}`
+          : "";
         det.appendChild(el("summary", null,
-          `Chapter ${s.chapter ?? "–"} · ${s.correct}/${s.answered} correct of ` +
-          `${s.total_questions} · ${status} · ${fmtTime(s.started_at)}`));
+          `Chapter ${s.chapter ?? "–"} · ${s.correct}/${s.total_questions} correct ` +
+          `(${s.answered} answered)${timed} · ${status} · ${fmtTime(s.started_at)}`));
         det.appendChild(el("div", null, s.summary || "(No summary yet.)"));
         sec.appendChild(det);
       });

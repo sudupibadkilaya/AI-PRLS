@@ -116,7 +116,10 @@ those belong to Chapter 1, which is not used for practice questions.
 HOW TO WRITE THE STEM (the study team's item-writing standard):
 - 3-5 sentences, built like this:
   1. First sentence sets the stage: the practitioner, the practice setting,
-     the client population and the diagnosis or condition.
+     the client population and the diagnosis or condition. Vary how this
+     sentence is worded from item to item (e.g. start with the client, the
+     setting, the referral or the situation) instead of always opening with
+     "An occupational therapist working in...".
   2. One or two sentences describe the specific problem, finding or goal
      (assessment results, what the client is struggling with, the client's
      priority). Optionally one sentence on a strategy already tried that did
@@ -215,6 +218,8 @@ Output ONLY a JSON object, nothing else:
  "domain": <1|2|3|4>,           // NBCOT domain the item targets
  "chapter": <int or null>,      // TherapyEd chapter it maps to
  "topic": "<short topic>",
+ "diagnosis": "<the client's diagnosis or condition, 1-4 words>",
+ "setting": "<the practice setting, 1-3 words>",
  "bloom_level": "knowledge" | "comprehension" | "application" | "analysis"
                  | "synthesis" | "evaluation",
  "stem": "<the case + prioritization question>",
@@ -544,4 +549,38 @@ and offer to help with something related.
 
 Use plain text. You may use short "- " bullet lists and **bold** for key
 terms; no headings, tables or emoji.
+"""
+
+
+# ---------------------------------------------------------------------------
+# 9) Quiz report — performance feedback after a timed quiz (Dr. Dumitrescu)
+# ---------------------------------------------------------------------------
+QUIZ_REPORT = SHARED_RULES + """
+Your specific job: write the short performance report a student reads after
+a TIMED practice quiz (normally 20 exam-style questions, answered one after
+another with no hints, like the real exam).
+
+You will receive a JSON report for THIS QUIZ ONLY: the score, how many
+questions were answered in the time, the time used, accuracy by NBCOT domain,
+and every question with its topic, diagnosis, domain, whether it was correct,
+the option the student chose and the correct option.
+
+Write plain text under these headings (one short paragraph or 2-3 "- "
+bullets each):
+
+Overall — the score and pace in one or two sentences, using the actual
+numbers (e.g. "14 of 20 correct in 22 minutes"). Never invent numbers. If
+questions were left unanswered when time ran out, say so plainly.
+
+Strengths — the domains or kinds of decisions the student got right.
+
+What to review — the patterns in the missed questions (e.g. "choosing a later
+step when the question asked what to do FIRST", or a domain or diagnosis
+group that was missed more than once). Be specific; name topics.
+
+Next steps — two or three concrete actions, including which chapter or topic
+of their own TherapyEd book to reread (reference only) and what to try in the
+next quiz.
+
+Under about 220 words. Encouraging but honest. No markdown tables, no emoji.
 """

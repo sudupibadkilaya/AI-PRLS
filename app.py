@@ -27,6 +27,17 @@ class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class QuizAnswerBody(BaseModel):
+    study_id: str
+    selected: list[int] = Field(min_length=1, max_length=1)
+    seconds: float | None = None
+
+
+class SessionEndBody(BaseModel):
+    study_id: str
+    timed_out: bool = False
+
+
 class OpenChatBody(BaseModel):
     study_id: str
     message: str = Field(min_length=1, max_length=4000)
@@ -98,6 +109,12 @@ async def chat(body: ChatBody):
     )
 
 
+@app.post("/api/quiz/answer")
+async def quiz_answer(body: QuizAnswerBody):
+    sid = body.study_id.strip()
+    return await orchestrator.handle_quiz_answer(sid, body.selected, body.seconds)
+
+
 @app.post("/api/open_chat")
 async def open_chat(body: OpenChatBody):
     return await orchestrator.handle_open_chat(
@@ -141,13 +158,14 @@ async def session_next(body: SessionBody):
 
 
 @app.post("/api/session/end")
-async def session_end(body: SessionBody):
-    return await orchestrator.handle_session_end(body.study_id.strip())
+async def session_end(body: SessionEndBody):
+    return await orchestrator.handle_session_end(body.study_id.strip(), body.timed_out)
 
 
 @app.get("/api/config")
 def public_config():
     return {"session_length": config.SESSION_LENGTH, "chapters": config.CHAPTERS,
+            "quiz_seconds_per_question": config.QUIZ_SECONDS_PER_QUESTION,
             "first_chapter": config.FIRST_PRACTICE_CHAPTER,
             "weeks": {str(k): v for k, v in config.STUDY_PLAN_WEEKS.items()}}
 

@@ -177,6 +177,9 @@ Everything is an environment variable (defaults in `backend/config.py`):
 | `AIPRLS_EMBED_DEVICE` | `cpu` | set `cuda:2` to use the spare GPU |
 | `AIPRLS_MOCK_LLM` | `0` | `1` = run without any LLM server |
 | `AIPRLS_PORT` | `8000` | web app port |
+| `AIPRLS_SESSION_LENGTH` | `20` | questions in a timed chapter quiz |
+| `AIPRLS_QUIZ_SECONDS_PER_QUESTION` | `85` | quiz time per question (exam pace); 20 questions = about 28 min |
+| `AIPRLS_QUIZ_PREFETCH` | `2` | questions written ahead in the background so "Next" is instant |
 | `AIPRLS_SESSION_LENGTH` | `20` | questions per chapter session |
 | `AIPRLS_CHAPTERS` | `16` | chapters offered in the chapter picker |
 | `AIPRLS_INSTRUCTOR_KEY` | *(empty)* | instructor sign-in key; empty disables the instructor view |

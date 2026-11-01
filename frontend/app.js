@@ -33,11 +33,11 @@ $("#login-btn").addEventListener("click", async () => {
   $("#app").hidden = false;
   $("#student-label").textContent = "Signed in as " + id;
   addTutorText(
-    "Welcome. I'm your study partner for NBCOT preparation. You can ask me to " +
-    "quiz you (\u201c10 questions from chapter 14\u201d), explain a concept, or show your " +
-    "progress. I'll often ask why you chose an answer \u2014 explaining your " +
-    "reasoning is where the learning happens. For full details on any topic, " +
-    "keep your TherapyEd book nearby."
+    "Welcome. I'm your study partner for NBCOT preparation. Pick a chapter and start " +
+    "a timed quiz to practice like the real exam \u2014 you'll get a performance report " +
+    "at the end. You can also practice a single question with feedback on your " +
+    "reasoning, ask about a concept, or check your progress. For full details on " +
+    "any topic, keep your TherapyEd book nearby."
   );
   $("#input").focus();
 });
@@ -46,6 +46,7 @@ $("#logout-btn").addEventListener("click", () => location.reload());
 
 /* ---------- chapter sessions (select a chapter, N questions, summary) ---------- */
 let sessionLength = 20;
+let quizSecondsPerQ = 85;
 fetch("/api/config").then((r) => r.json()).then((c) => {
   sessionLength = c.session_length;
   const sel = $("#chapter-select");
@@ -55,31 +56,68 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
     o.value = i; o.textContent = "Chapter " + i + (wk ? ` (Week ${wk})` : "");
     sel.appendChild(o);
   }
-  $("#session-start-btn").textContent = `Start ${sessionLength}-question session`;
+  quizSecondsPerQ = c.quiz_seconds_per_question || 85;
+  const mins = Math.round((sessionLength * quizSecondsPerQ) / 60);
+  $("#session-start-btn").textContent = `Start timed ${sessionLength}-question quiz`;
+  $("#quiz-note").textContent = `${mins} minutes, timed like the exam. Your score report comes at the end.`;
 }).catch(() => {});
 
 $("#session-start-btn").addEventListener("click", () => {
   setOpenMode(false);
   const chapter = parseInt($("#chapter-select").value, 10) || null;
-  addStudent(`Start a ${sessionLength}-question session on Chapter ${chapter}.`);
-  callApi("/api/session/start", { study_id: studyId, chapter });
+  addStudent(`Start a timed ${sessionLength}-question quiz on Chapter ${chapter}.`);
+  callApi("/api/session/start", { study_id: studyId, chapter }, "Preparing your quiz\u2026");
 });
 $("#session-end-btn").addEventListener("click", () => {
-  if (!confirm("End this session now and see your summary?")) return;
-  callApi("/api/session/end", { study_id: studyId });
+  if (!confirm("End the quiz now and see your report?")) return;
+  endQuiz(false);
 });
 
 function updateBanner(session) {
   const banner = $("#session-banner");
-  if (!session) { banner.hidden = true; return; }
+  if (!session) { banner.hidden = true; stopTimer(); return; }
   banner.hidden = false;
+  if (session.mode === "timed" && session.seconds_left != null) startTimer(session.seconds_left);
   $("#session-label").textContent =
     `Chapter ${session.chapter ?? "–"} · Question ${session.number} of ${session.total}`;
   $("#session-fill").style.width = Math.round((session.number / session.total) * 100) + "%";
 }
 
-async function callApi(url, body) {
-  const pending = addThinking();
+/* ---------- quiz timer ---------- */
+let timerId = null, timerEnd = 0, quizEnding = false;
+function fmtClock(sec) {
+  sec = Math.max(0, Math.round(sec));
+  return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+}
+function startTimer(secondsLeft) {
+  timerEnd = Date.now() + secondsLeft * 1000;
+  quizEnding = false;
+  $("#session-timer").hidden = false;
+  if (timerId) clearInterval(timerId);
+  const tick = () => {
+    const left = (timerEnd - Date.now()) / 1000;
+    const t = $("#session-timer");
+    t.textContent = "Time left " + fmtClock(left);
+    t.classList.toggle("low", left <= 120);
+    if (left <= 0) { stopTimer(); endQuiz(true); }
+  };
+  tick();
+  timerId = setInterval(tick, 1000);
+}
+function stopTimer() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+  $("#session-timer").hidden = true;
+}
+function endQuiz(timedOut) {
+  if (quizEnding) return;
+  quizEnding = true;
+  if (timedOut) addTutorText("Time is up. Here is your report.");
+  callApi("/api/session/end", { study_id: studyId, timed_out: !!timedOut }, "Writing your report\u2026");
+}
+
+async function callApi(url, body, waitText) {
+  const pending = addThinking(waitText);
   setBusy(true);
   try {
     const res = await fetch(url, {
@@ -96,6 +134,18 @@ async function callApi(url, body) {
     setBusy(false);
   }
 }
+
+/* ---------- phone menu ---------- */
+$("#menu-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  $("#app").classList.toggle("menu-open");
+});
+document.addEventListener("click", (e) => {
+  const app = $("#app");
+  if (!app.classList.contains("menu-open")) return;
+  // close after choosing something, or when tapping outside the menu
+  if (!$("#sidebar").contains(e.target) || e.target.closest("button")) app.classList.remove("menu-open");
+});
 
 /* ---------- sidebar shortcuts ---------- */
 document.querySelectorAll(".nav-btn[data-prompt]").forEach((b) =>
@@ -254,10 +304,10 @@ function addTutorText(text, messageId, formatted) {
   if (messageId) b.parentElement.appendChild(feedbackBar(messageId));
   scrollDown();
 }
-function addThinking() {
+function addThinking(text) {
   const b = msgShell("Tutor", "tutor");
   b.classList.add("thinking");
-  b.textContent = "Thinking\u2026";
+  b.textContent = text || "Thinking\u2026";
   return b.parentElement;
 }
 function scrollDown() { pane().scrollTop = pane().scrollHeight; }
@@ -315,6 +365,8 @@ function renderResponse(data) {
   if (data.type === "feedback") return renderFeedback(data);
   if (data.type === "progress") return renderProgress(data);
   if (data.type === "session_summary") return renderSessionSummary(data);
+  if (data.type === "quiz_question") return renderQuizQuestion(data);
+  if (data.type === "quiz_report") return renderQuizReport(data);
   addTutorText(data.text, data.message_id);
   // After a reflection inside a session: offer the next case.
   if (data.session && data.route === "reflect") renderNextButton(data.session);
@@ -406,6 +458,185 @@ function renderSessionSummary(data) {
     b.appendChild(table);
   }
   b.parentElement.appendChild(feedbackBar(data.message_id));
+  scrollDown();
+}
+
+/* ---------- timed quiz (one question at a time, no hints or reflections) ---------- */
+let quizMsg = null;   // the current quiz question on screen
+function renderQuizQuestion(data) {
+  const q = data.question, sess = data.session || {};
+  if (quizMsg) quizMsg.remove();
+  const b = msgShell("Quiz", "tutor");
+  quizMsg = b.parentElement;
+  b.style.whiteSpace = "normal";
+  const shownAt = Date.now();
+
+  const card = document.createElement("div");
+  card.className = "qcard";
+  const chip = document.createElement("div");
+  chip.className = "qcount";
+  chip.textContent = `Question ${sess.number} of ${sess.total}`;
+  card.appendChild(chip);
+  const meta = [];
+  if (q.chapter) meta.push("Chapter " + q.chapter);
+  if (q.domain) meta.push("Domain " + q.domain + " · " + (DOMAINS[q.domain] || ""));
+  meta.push("Single best answer");
+  card.insertAdjacentHTML("beforeend", `<div class="qmeta">${meta.join("  ·  ")}</div><div class="qstem"></div>`);
+  card.querySelector(".qstem").textContent = q.stem;
+
+  const next = document.createElement("button");
+  next.className = "qsubmit";
+  next.disabled = true;
+  next.textContent = sess.number >= sess.total ? "Finish quiz" : "Next question";
+  q.options.forEach((opt, i) => {
+    const label = document.createElement("label");
+    label.className = "qopt";
+    const input = document.createElement("input");
+    input.type = "radio"; input.name = "quizopt"; input.value = i;
+    input.addEventListener("change", () => { next.disabled = false; });
+    const span = document.createElement("span");
+    span.textContent = String.fromCharCode(65 + i) + ". " + opt;
+    label.appendChild(input); label.appendChild(span);
+    card.appendChild(label);
+  });
+
+  next.addEventListener("click", async () => {
+    const pick = card.querySelector("input[name=quizopt]:checked");
+    if (!pick || quizEnding) return;
+    card.querySelectorAll("input").forEach((x) => (x.disabled = true));
+    next.disabled = true;
+    next.textContent = sess.number >= sess.total ? "Writing your report…" : "Loading…";
+    try {
+      const res = await fetch("/api/quiz/answer", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ study_id: studyId, selected: [parseInt(pick.value, 10)],
+                               seconds: (Date.now() - shownAt) / 1000 }),
+      });
+      if (!res.ok) throw new Error();
+      renderResponse(await res.json());
+    } catch {
+      card.querySelectorAll("input").forEach((x) => (x.disabled = false));
+      next.disabled = false;
+      next.textContent = "Try again";
+    }
+  });
+  card.appendChild(next);
+  b.appendChild(card);
+  scrollDown();
+}
+
+function renderQuizReport(data) {
+  updateBanner(null);
+  if (quizMsg) { quizMsg.remove(); quizMsg = null; }
+  quizEnding = false;
+  const r = data.report || {};
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  b.classList.add("summary-card");
+
+  const h = document.createElement("h3");
+  h.textContent = (data.timed_out ? "Time's up — your performance report"
+    : data.ended_early ? "Quiz ended early — your performance report"
+    : "Quiz complete — your performance report") + (r.chapter ? ` (Chapter ${r.chapter})` : "");
+  b.appendChild(h);
+
+  if (r.answered) {
+    const pct = r.score != null ? Math.round(r.score * 100) + "%" : "–";
+    const stats = document.createElement("div");
+    stats.className = "pstats";
+    const stat = (num, lab) => {
+      const d = document.createElement("div"); d.className = "pstat";
+      const n = document.createElement("div"); n.className = "num"; n.textContent = num;
+      const l = document.createElement("div"); l.className = "lab"; l.textContent = lab;
+      d.appendChild(n); d.appendChild(l); stats.appendChild(d);
+    };
+    stat(`${r.correct}/${r.planned_questions}`, "correct");
+    stat(pct, "score");
+    stat(`${r.answered}/${r.planned_questions}`, "answered");
+    stat(fmtClock(r.time_used || 0), "time used" + (r.time_limit ? ` of ${Math.round(r.time_limit / 60)} min` : ""));
+    if (r.avg_seconds != null) stat(fmtClock(r.avg_seconds), "average per question");
+    b.appendChild(stats);
+
+    const dom = Object.entries(r.by_domain || {}).filter(([d]) => d !== "unknown");
+    if (dom.length) {
+      const head = document.createElement("div");
+      head.className = "pstats-heading";
+      head.textContent = "By exam domain";
+      b.appendChild(head);
+      dom.sort().forEach(([d, v]) => {
+        const p = v.answered ? Math.round((v.correct / v.answered) * 100) : 0;
+        const row = document.createElement("div");
+        row.className = "pbar-row";
+        row.innerHTML = `<span class="lbl dom">${d}. ${DOMAINS[d] || ""}</span>
+          <div class="pbar"><div style="width:${p}%"></div></div>
+          <span class="pct">${v.correct}/${v.answered}</span>`;
+        b.appendChild(row);
+      });
+    }
+  }
+
+  const t = document.createElement("div");
+  t.className = "summary-text";
+  t.textContent = data.text;
+  b.appendChild(t);
+
+  if (r.questions && r.questions.length) {
+    const head = document.createElement("div");
+    head.className = "pstats-heading";
+    head.textContent = "Review your answers";
+    b.appendChild(head);
+    r.questions.forEach((q) => {
+      const ok = q.verdict === "correct";
+      const det = document.createElement("details");
+      det.className = "qreview " + (ok ? "rv-ok" : "rv-no");
+      const sum = document.createElement("summary");
+      sum.textContent = `${q.number}. ${ok ? "✓ Correct" : "✗ Incorrect"} — ` +
+        (q.diagnosis ? q.diagnosis + " · " : "") + (q.topic || "");
+      det.appendChild(sum);
+      const stem = document.createElement("div");
+      stem.className = "qstem";
+      stem.textContent = q.stem;
+      det.appendChild(stem);
+      const pick = (q.selected || [])[0], key = (q.correct_options || [])[0];
+      (q.options || []).forEach((opt, i) => {
+        const o = document.createElement("div");
+        o.className = "qopt static" + (i === key ? " right" : "") + (i === pick && i !== key ? " wrongpick" : "");
+        let tag = "";
+        if (i === key) tag = "  (correct answer)";
+        if (i === pick) tag += i === key ? "" : "  (your answer)";
+        const span = document.createElement("span");
+        span.textContent = String.fromCharCode(65 + i) + ". " + opt + tag;
+        o.appendChild(span);
+        if ((i === key || i === pick) && q.rationales && q.rationales[i]) {
+          const why = document.createElement("div");
+          why.className = "qwhy-text";
+          why.textContent = q.rationales[i];
+          o.appendChild(why);
+        }
+        det.appendChild(o);
+      });
+      if (q.reasoning_principle) {
+        const rp = document.createElement("p");
+        rp.className = "muted small";
+        rp.textContent = "Reasoning principle: " + q.reasoning_principle;
+        det.appendChild(rp);
+      }
+      if (q.textbook_pointer) {
+        const tp = document.createElement("p");
+        tp.className = "muted small";
+        tp.textContent = q.textbook_pointer;
+        det.appendChild(tp);
+      }
+      b.appendChild(det);
+    });
+    if (r.unanswered) {
+      const u = document.createElement("p");
+      u.className = "muted small";
+      u.textContent = `${r.unanswered} question(s) were not answered and count as incorrect.`;
+      b.appendChild(u);
+    }
+  }
+  if (data.message_id) b.parentElement.appendChild(feedbackBar(data.message_id));
   scrollDown();
 }
 

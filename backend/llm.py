@@ -115,6 +115,15 @@ def _mock_summary(messages: list[dict]) -> str:
         r = extract_json(last.split("\n", 1)[1])
     except (ValueError, IndexError, json.JSONDecodeError):
         return "Session complete. (Mock mode: summary unavailable.)"
+    if last.startswith("Quiz report JSON"):
+        missed = [q.get("topic") for q in r.get("questions", []) if q.get("result") != "correct"]
+        return (
+            f"Overall — {r.get('correct', 0)} of {r.get('planned_questions', 0)} correct "
+            f"({r.get('answered', 0)} answered) in {round((r.get('time_used') or 0) / 60)} min.\n\n"
+            "Strengths — (Mock mode) You read the prioritization keyword carefully.\n\n"
+            "What to review — " + (", ".join(t for t in missed if t) or "nothing missed") + ".\n\n"
+            "Next steps — Reread those topics in your TherapyEd book, then take another timed quiz."
+        )
     n, c = r.get("total_attempts", 0), r.get("total_correct", 0)
     indep = sum(1 for q in r.get("questions", []) if not q.get("used_scaffold"))
     refl = r.get("reflections_completed", 0)

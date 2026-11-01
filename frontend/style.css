@@ -342,7 +342,12 @@ details.session-sum summary { cursor: pointer; }
 details.session-sum div { white-space: pre-wrap; margin-top: 8px; }
 
 @media (max-width: 700px) {
-  #sidebar { display: none; }
+  #sidebar {
+    display: none; position: fixed; top: 0; bottom: 0; left: 0; z-index: 20;
+    width: 82%; max-width: 300px; overflow-y: auto; box-shadow: 0 0 0 100vmax rgba(0,0,0,.25);
+  }
+  #app.menu-open #sidebar { display: flex; }
+  .menu-btn { display: block; }
   .idash-body { flex-direction: column; }
   .idash-list { width: 100%; max-height: 35vh; border-right: none; border-bottom: 1px solid var(--rule); }
 }
@@ -373,3 +378,26 @@ details.session-sum div { white-space: pre-wrap; margin-top: 8px; }
 .session-sum .dialogue { margin-top: 8px; font-size: 13.5px; border-left: 2px solid var(--rule); padding-left: 10px; }
 .session-sum .dialogue p { margin: 4px 0; white-space: pre-wrap; }
 .session-sum .dialogue p.s { color: var(--pine); }
+
+/* ---------- Timed quiz (Oct 29 feedback) ---------- */
+#session-timer { font-variant-numeric: tabular-nums; font-weight: 600; }
+#session-timer.low { color: var(--wrong); }
+#quiz-note { margin-top: 4px; margin-bottom: 0; }
+.qreview { border: 1px solid var(--rule); border-left: 3px solid var(--pine); padding: 8px 12px; margin: 6px 0; background: #fff; }
+.qreview.rv-no { border-left-color: var(--wrong); }
+.qreview summary { cursor: pointer; font-size: 14px; }
+.qreview.rv-no summary { color: var(--wrong); }
+.summary-card .pbar-row + .summary-text { margin-top: 14px; }
+.qreview .qstem { margin: 10px 0 8px; }
+.qopt.static { cursor: default; display: block; }
+.qopt.static:hover { background: inherit; }
+.qopt.static.right:hover { background: var(--pine-soft); }
+.qwhy-text { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.muted.small { font-size: 13px; margin: 6px 0 0; }
+.pbar-row .lbl.dom { width: 210px; }
+@media (max-width: 600px) { .pbar-row .lbl.dom { width: 120px; } }
+
+/* phone menu */
+.menu-btn { display: none; align-self: flex-start; margin: 8px 16px 0; padding: 6px 12px;
+  background: #fff; border: 1px solid var(--rule); color: var(--pine); font-size: 14px; }
+@media (max-width: 700px) { .menu-btn { display: block; } }

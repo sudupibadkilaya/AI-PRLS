@@ -41,12 +41,15 @@ async def make_question(
     avoid_topics: list[str] | None = None,
     position: tuple[int, int] | None = None,
     guidance: list[str] | None = None,
+    avoid_cases: list[dict] | None = None,
 ) -> dict:
     """Generate one original NBCOT-style item, grounded in companion notes.
 
     avoid_topics: topics already used (e.g. earlier in this chapter session).
     position: (n, total) when the item is part of a chapter session, so the
-    maker can vary domains and difficulty across the set."""
+    maker can vary domains and difficulty across the set.
+    avoid_cases: diagnosis / setting / stem opening of the questions already
+    in this quiz, so consecutive items are not the same case (Dr. Dumitrescu)."""
     query = f"chapter {chapter} {topic}" if chapter else topic
     context = rag.context_block(query, chapter=chapter)
     recent = avoid_topics if avoid_topics is not None else db.recent_topics(study_id)
@@ -67,9 +70,10 @@ async def make_question(
             "Cover a different scenario and sub-topic from the earlier questions, "
             "and vary the NBCOT domain across the session.\n"
         )
+    variety_note = _variety_note(avoid_cases)
     user_msg = (
         f"Requested chapter: {chapter_line}\n"
-        f"Requested topic: {topic}\n{session_note}\n"
+        f"Requested topic: {topic}\n{session_note}{variety_note}\n"
         f"Companion notes (the study team's own material):\n{context}\n\n"
         f"Topics of this student's recent questions (avoid repeating these "
         f"scenarios): {', '.join(recent) if recent else 'none yet'}\n\n"
@@ -94,7 +98,7 @@ async def make_question(
                 {"role": "user", "content": f"That was not usable ({exc}). Output the JSON item again, following every rule."},
             ]
             continue
-        issues = [] if config.MOCK_LLM else quality_issues(q)
+        issues = [] if config.MOCK_LLM else quality_issues(q) + variety_issues(q, avoid_cases)
         if best is None or len(issues) < best[0]:
             best = (len(issues), q)
         if not issues:
@@ -183,6 +187,69 @@ def quality_issues(q: dict) -> list[str]:
 _BLOOM_LEVELS = {"knowledge", "comprehension", "application", "analysis", "synthesis", "evaluation"}
 
 
+def _wordlist(text: str) -> list[str]:
+    return re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower()).split()
+
+
+def _same_diagnosis(a: str, b: str) -> bool:
+    """'stroke' vs 'left CVA (stroke)' vs 'right hemisphere stroke' -> same."""
+    wa = {w for w in _wordlist(a) if len(w) > 3 and w not in _DX_STOP}
+    wb = {w for w in _wordlist(b) if len(w) > 3 and w not in _DX_STOP}
+    if not wa or not wb:
+        return False
+    return bool(wa & wb) or " ".join(_wordlist(a)) in " ".join(_wordlist(b)) or " ".join(_wordlist(b)) in " ".join(_wordlist(a))
+
+
+_DX_STOP = {"left", "right", "acute", "chronic", "mild", "moderate", "severe", "post", "status",
+            "with", "after", "disorder", "syndrome", "disease", "injury", "type", "stage", "early", "late"}
+
+
+def _opening(stem: str, n: int = 4) -> str:
+    return " ".join(_wordlist(stem)[:n])
+
+
+def _variety_note(avoid_cases: list[dict] | None) -> str:
+    if not avoid_cases:
+        return ""
+    dx = [c["diagnosis"] for c in avoid_cases if c.get("diagnosis")]
+    settings = [c["setting"] for c in avoid_cases[-2:] if c.get("setting")]
+    openings = [c["opening"] for c in avoid_cases[-5:] if c.get("opening")]
+    lines = ["VARIETY (important): this quiz must not feel like the same case repeated."]
+    if dx:
+        lines.append("- Diagnoses already used in this quiz: " + "; ".join(dx)
+                     + ". Use a DIFFERENT diagnosis or condition (not a variant of these, "
+                     "and never one of the last four).")
+    if settings:
+        lines.append("- Settings of the last questions: " + "; ".join(settings)
+                     + ". Use a different practice setting and a different age group.")
+    if openings:
+        lines.append("- Earlier stems began like this: " + " | ".join(f'"{o}..."' for o in openings)
+                     + ". Begin this stem with different wording.")
+    return "\n".join(lines) + "\n"
+
+
+def variety_issues(q: dict, avoid_cases: list[dict] | None) -> list[str]:
+    """Consecutive quiz items must not repeat the same diagnosis or opening."""
+    if not avoid_cases:
+        return []
+    issues = []
+    recent = [c.get("diagnosis", "") for c in avoid_cases[-4:]]
+    if q.get("diagnosis") and any(_same_diagnosis(q["diagnosis"], d) for d in recent if d):
+        issues.append("Use a different diagnosis: the last questions already used "
+                      + "; ".join(d for d in recent if d) + ".")
+    op = _opening(q.get("stem", ""))
+    if op and any(op == c.get("opening_key") for c in avoid_cases[-5:]):
+        issues.append("Start the stem with different wording from the earlier questions.")
+    return issues
+
+
+def case_signature(q: dict) -> dict:
+    """What later items in the same quiz should avoid repeating."""
+    stem = q.get("stem", "")
+    return {"diagnosis": q.get("diagnosis", ""), "setting": q.get("setting", ""),
+            "opening": " ".join(stem.split()[:8]), "opening_key": _opening(stem)}
+
+
 def _validate_question(q: dict) -> None:
     n_opts = len(q.get("options", []))
     n_correct = len(q.get("correct", []))
@@ -195,6 +262,8 @@ def _validate_question(q: dict) -> None:
         q["bloom_level"] = "analysis"
     if q["bloom_level"] in ("knowledge", "comprehension") and not config.MOCK_LLM:
         raise ValueError("Recall-level item; NBCOT practice needs case reasoning")
+    q["diagnosis"] = str(q.get("diagnosis") or "").strip()[:60]
+    q["setting"] = str(q.get("setting") or "").strip()[:60]
     if not q.get("reasoning_principle"):
         q["reasoning_principle"] = "Prioritize the option that best matches this client's current stage and safety needs."
     _align_rationales(q)
@@ -360,6 +429,28 @@ async def open_chat(message: str, history: list[dict],
     )
     convo = history + [{"role": "user", "content": user_msg}]
     return await llm.chat("open", prompts.OPEN_CHAT, convo)
+
+
+async def quiz_summary(report: dict, guidance: list[str] | None = None) -> str:
+    """Short performance report after a timed quiz."""
+    compact = {k: v for k, v in report.items() if k != "questions"}
+    compact["questions"] = []
+    for x in report.get("questions", []):
+        opts = x.get("options") or []
+        pick = (x.get("selected") or [None])[0]
+        key = (x.get("correct_options") or [None])[0]
+        compact["questions"].append({
+            "number": x["number"], "topic": x.get("topic"), "diagnosis": x.get("diagnosis"),
+            "domain": x.get("domain"), "result": x.get("verdict"), "seconds": x.get("seconds"),
+            "chose": opts[pick] if isinstance(pick, int) and pick < len(opts) else None,
+            "correct": opts[key] if isinstance(key, int) and key < len(opts) else None,
+        })
+    return await llm.chat(
+        "summary",
+        prompts.QUIZ_REPORT,
+        [{"role": "user", "content": f"Quiz report JSON:\n{json.dumps(compact, indent=2)}"
+          + _guidance_block(guidance)}],
+    )
 
 
 async def small_talk(message: str, history: list[dict]) -> str:

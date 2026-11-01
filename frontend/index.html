@@ -72,7 +72,8 @@
         <p class="nav-label">Chapter practice</p>
         <div class="session-picker">
           <select id="chapter-select" aria-label="Chapter"></select>
-          <button id="session-start-btn" class="nav-btn primary">Start 20-question session</button>
+          <button id="session-start-btn" class="nav-btn primary">Start timed 20-question quiz</button>
+          <p id="quiz-note" class="fineprint">Timed like the exam. Your score report comes at the end.</p>
         </div>
         <p class="nav-label">Start something</p>
         <button class="nav-btn" data-prompt="Quiz me with a practice question.">Practice a question</button>
@@ -93,10 +94,12 @@
     </aside>
 
     <main id="chat-pane">
+      <button id="menu-btn" class="menu-btn" type="button" aria-controls="sidebar">Menu</button>
       <div id="session-banner" hidden>
         <span id="session-label"></span>
         <div class="session-track"><div id="session-fill"></div></div>
-        <button id="session-end-btn" class="linklike">End session &amp; see summary</button>
+        <span id="session-timer" hidden></span>
+        <button id="session-end-btn" class="linklike">End quiz &amp; see report</button>
       </div>
       <div id="messages"></div>
       <div id="open-head">

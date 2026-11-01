@@ -24,6 +24,13 @@ GEN = {
     "open":     {"temperature": 0.6, "max_tokens": 1200},
 }
 
+# Timed quiz (Dr. Dumitrescu, Oct 29): the chapter session is a timed,
+# exam-style quiz with a performance report at the end. Default pace matches
+# the real exam (about 4 hours for 170 items, roughly 85 seconds per item).
+QUIZ_SECONDS_PER_QUESTION = int(os.getenv("AIPRLS_QUIZ_SECONDS_PER_QUESTION", "85"))
+# How many questions to write ahead in the background so "Next" is instant.
+QUIZ_PREFETCH = int(os.getenv("AIPRLS_QUIZ_PREFETCH", "2"))
+
 # Open chat ("like ChatGPT", Dr. Dumitrescu): how many earlier turns of the
 # conversation the model sees with each new message.
 OPEN_CHAT_HISTORY = int(os.getenv("AIPRLS_OPEN_CHAT_HISTORY", "16"))

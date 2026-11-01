@@ -3,6 +3,7 @@ specialist, logs everything for research, and returns a payload the frontend
 can render (plain text, a question card, or a progress card)."""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -26,13 +27,6 @@ _sessions: dict[str, dict] = {}
 
 _STUDENT_FIELDS = ("format", "stem", "options", "chapter", "domain", "topic", "bloom_level")
 REFLECT_ACK = "Thanks for reflecting on that — it's logged. Ready for another case whenever you are."
-
-
-def _session_info(study_id: str) -> dict | None:
-    s = _sessions.get(study_id)
-    if not s:
-        return None
-    return {"number": s["current"], "total": s["total"], "chapter": s["chapter"]}
 
 
 async def _serve_question(study_id: str, chapter: int | None, topic: str) -> dict:
@@ -302,7 +296,7 @@ async def handle_reflect(study_id: str, reflection: str) -> dict:
 
     mid = db.log_message(study_id, "assistant", REFLECT_ACK, "reflect")
     sess = _sessions.get(study_id)
-    if sess and sess["current"] >= sess["total"]:
+    if sess and sess.get("mode") != "timed" and sess["current"] >= sess["total"]:
         # Last question of the session: acknowledge, then summative feedback.
         summary = await _finish_session(study_id, ended_early=False)
         return {**summary, "ack": REFLECT_ACK, "ack_message_id": mid}
@@ -332,53 +326,224 @@ def _parse_quiz_request(message: str, routed_chapter) -> tuple[int | None, int |
     return chapter, count
 
 
+# --- timed quiz (Dr. Dumitrescu, Oct 29) ------------------------------------
+# A chapter session is a timed, exam-style quiz: choose an answer, go straight
+# to the next question (no hints, dialogue or reflection in between), and get
+# a performance report at the end. Questions are written ahead in the
+# background so moving to the next one is instant, and each new item avoids
+# the diagnoses and openings already used in the quiz.
+
+def _quiz_info(sess: dict) -> dict:
+    left = max(0, int(round(sess["deadline"] - time.time())))
+    return {"number": sess["current"], "total": sess["total"], "chapter": sess["chapter"],
+            "mode": "timed", "seconds_left": left, "time_limit": sess["time_limit"]}
+
+
+def _session_info(study_id: str) -> dict | None:
+    s = _sessions.get(study_id)
+    if not s:
+        return None
+    if s.get("mode") == "timed":
+        return _quiz_info(s)
+    return {"number": s["current"], "total": s["total"], "chapter": s["chapter"]}
+
+
+async def _write_quiz_question(study_id: str, sess: dict) -> dict:
+    written = sess["served"] + sess["ready"]
+    q = await agents.make_question(
+        study_id, sess["chapter"], "general",
+        avoid_topics=[x.get("topic") for x in written if x.get("topic")],
+        position=(len(written) + 1, sess["total"]),
+        guidance=db.active_guidance(study_id),
+        avoid_cases=[agents.case_signature(x) for x in written],
+    )
+    if sess["chapter"]:
+        q["chapter"] = sess["chapter"]
+    return q
+
+
+async def _fill_quiz(study_id: str, sess: dict) -> None:
+    """Keep up to QUIZ_PREFETCH questions written ahead (one at a time, so
+    each new item can avoid the cases before it)."""
+    try:
+        while (sess["active"] and len(sess["ready"]) < config.QUIZ_PREFETCH
+               and len(sess["served"]) + len(sess["ready"]) < sess["total"]):
+            try:
+                q = await _write_quiz_question(study_id, sess)
+            except Exception:
+                sess["failures"] += 1
+                if sess["failures"] > 3:
+                    break
+                continue
+            if not sess["active"]:
+                break
+            sess["ready"].append(q)
+            sess["ready_event"].set()
+    finally:
+        sess["filler"] = None
+        sess["ready_event"].set()
+
+
+def _kick_quiz(study_id: str, sess: dict) -> None:
+    if sess["filler"] is None and sess["active"] and sess["failures"] <= 3:
+        sess["filler"] = asyncio.create_task(_fill_quiz(study_id, sess))
+
+
+async def _take_next_quiz_question(study_id: str, sess: dict) -> dict | None:
+    for _ in range(6):
+        if sess["ready"]:
+            break
+        _kick_quiz(study_id, sess)
+        if sess["filler"] is None:
+            break
+        sess["ready_event"].clear()
+        if sess["ready"]:
+            break
+        await sess["ready_event"].wait()
+    if not sess["ready"]:
+        return None
+    q = sess["ready"].pop(0)
+    sess["served"].append(q)
+    sess["current"] = len(sess["served"])
+    sess["shown_at"] = time.time()
+    _kick_quiz(study_id, sess)  # keep writing ahead
+    return q
+
+
+def _quiz_question_payload(study_id: str, sess: dict, q: dict) -> dict:
+    student_view = {k: q.get(k) for k in _STUDENT_FIELDS}
+    mid = db.log_message(study_id, "assistant", json.dumps(student_view), "quiz")
+    return {"type": "quiz_question", "question": student_view,
+            "session": _quiz_info(sess), "message_id": mid, "route": "quiz"}
+
+
+def _quiz_retry_payload(study_id: str, sess: dict) -> dict:
+    text = ("I had trouble writing the next question just now. Your answers so far are "
+            "saved — press Try again, or end the quiz to see your report.")
+    mid = db.log_message(study_id, "assistant", text, "quiz")
+    return {"type": "text", "text": text, "message_id": mid, "route": "quiz",
+            "retry_next": True, "session": _quiz_info(sess)}
+
+
 async def handle_session_start(study_id: str, chapter: int | None, total: int | None = None) -> dict:
-    """Start a chapter session and serve question 1."""
+    """Start a timed quiz and serve question 1."""
     if study_id in _sessions:
-        # Starting over abandons the old session (it stays in the DB, marked early).
-        old = _sessions.pop(study_id)
-        db.complete_session(old["id"], "", ended_early=True)
+        await _finish_session(study_id, ended_early=True, quiet=True)
     _pending.pop(study_id, None)
     total = total or config.SESSION_LENGTH
-    sid = db.create_session(study_id, chapter, total)
-    _sessions[study_id] = {"id": sid, "chapter": chapter, "total": total, "current": 0}
+    time_limit = total * config.QUIZ_SECONDS_PER_QUESTION
+    sid = db.create_session(study_id, chapter, total, mode="timed", time_limit=time_limit)
+    now = time.time()
+    sess = {"id": sid, "mode": "timed", "chapter": chapter, "total": total, "current": 0,
+            "served": [], "ready": [], "answered": 0, "started_at": now,
+            "deadline": now + time_limit, "time_limit": time_limit, "shown_at": now,
+            "filler": None, "ready_event": asyncio.Event(), "active": True, "failures": 0}
+    _sessions[study_id] = sess
     label = f"Chapter {chapter}" if chapter else "mixed chapters"
     db.log_message(study_id, "assistant",
-                   f"[session start] {label}, {total} questions", "session")
-    return await _serve_question(study_id, chapter, "general")
+                   f"[quiz start] {label}, {total} questions, {time_limit // 60} min", "session")
+    q = await _take_next_quiz_question(study_id, sess)
+    if q is None:
+        _sessions.pop(study_id, None)
+        sess["active"] = False
+        db.complete_session(sid, "", ended_early=True)
+        text = "I couldn't prepare the quiz just now — please try again in a moment."
+        mid = db.log_message(study_id, "assistant", text, "quiz")
+        return {"type": "text", "text": text, "message_id": mid, "route": "quiz", "session": None}
+    sess["started_at"] = time.time()  # the clock starts when question 1 is shown
+    sess["deadline"] = sess["started_at"] + time_limit
+    return _quiz_question_payload(study_id, sess, q)
+
+
+async def handle_quiz_answer(study_id: str, selected: list[int], seconds: float | None) -> dict:
+    """Record the answer and go straight to the next question (or the report)."""
+    sess = _sessions.get(study_id)
+    if not sess or sess.get("mode") != "timed" or not sess["served"]:
+        text = "You don't have a quiz running — pick a chapter and start one."
+        mid = db.log_message(study_id, "assistant", text, "quiz")
+        return {"type": "text", "text": text, "message_id": mid, "route": "quiz", "session": None}
+    if sess["answered"] < len(sess["served"]):  # ignore double submits
+        q = sess["served"][-1]
+        took = seconds if isinstance(seconds, (int, float)) and 0 <= seconds < 86400 \
+            else time.time() - sess["shown_at"]
+        verdict = "correct" if sorted(selected) == sorted(q["correct"]) else "incorrect"
+        db.log_message(study_id, "student", json.dumps({"selected": selected}), "quiz")
+        db.log_attempt(study_id, q, selected, "", verdict, q.get("bloom_level"), False,
+                       session_id=sess["id"], seconds=took)
+        sess["answered"] += 1
+    if time.time() > sess["deadline"] + 5:
+        return await _finish_session(study_id, ended_early=True, timed_out=True)
+    if sess["answered"] >= sess["total"]:
+        return await _finish_session(study_id, ended_early=False)
+    q = await _take_next_quiz_question(study_id, sess)
+    if q is None:
+        return _quiz_retry_payload(study_id, sess)
+    return _quiz_question_payload(study_id, sess, q)
 
 
 async def handle_session_next(study_id: str) -> dict:
-    """Serve the next question of the active session (or the summary if done)."""
+    """Show the current quiz question again, or write the next one after a failure."""
     sess = _sessions.get(study_id)
     if not sess:
-        text = "You don't have a chapter session running — pick a chapter to start one."
+        text = "You don't have a quiz running — pick a chapter to start one."
         mid = db.log_message(study_id, "assistant", text, "session")
         return {"type": "text", "text": text, "message_id": mid, "route": "session"}
-    pending = _pending.get(study_id)
-    if pending and pending.get("stage") in ("attempt", "probe", "reconsider"):
-        text = "Let's finish the current case first — choose an answer and tell me why."
-        mid = db.log_message(study_id, "assistant", text, "session")
-        return {"type": "text", "text": text, "message_id": mid, "route": "session"}
-    # A pending "reflect" stage means the student skipped the reflection.
-    _pending.pop(study_id, None)
-    if sess["current"] >= sess["total"]:
-        return await _finish_session(study_id, ended_early=False)
-    return await _serve_question(study_id, sess["chapter"], "general")
+    if sess.get("mode") != "timed":
+        _pending.pop(study_id, None)
+        if sess["current"] >= sess["total"]:
+            return await _finish_session(study_id, ended_early=False)
+        return await _serve_question(study_id, sess["chapter"], "general")
+    if sess["served"] and sess["answered"] < len(sess["served"]):
+        return _quiz_question_payload(study_id, sess, sess["served"][-1])
+    sess["failures"] = 0
+    q = await _take_next_quiz_question(study_id, sess)
+    if q is None:
+        return _quiz_retry_payload(study_id, sess)
+    return _quiz_question_payload(study_id, sess, q)
 
 
-async def handle_session_end(study_id: str) -> dict:
-    """Student stops early: summarize whatever was answered so far."""
+async def handle_session_end(study_id: str, timed_out: bool = False) -> dict:
+    """The student ends the quiz, or the timer ran out: report on what was answered."""
     if study_id not in _sessions:
-        text = "There's no chapter session running right now."
+        text = "There's no quiz running right now."
         mid = db.log_message(study_id, "assistant", text, "session")
         return {"type": "text", "text": text, "message_id": mid, "route": "session"}
     _pending.pop(study_id, None)
-    return await _finish_session(study_id, ended_early=True)
+    return await _finish_session(study_id, ended_early=True, timed_out=timed_out)
 
 
-async def _finish_session(study_id: str, ended_early: bool) -> dict:
+async def _finish_session(study_id: str, ended_early: bool, timed_out: bool = False,
+                          quiet: bool = False) -> dict:
     sess = _sessions.pop(study_id)
+    if sess.get("mode") != "timed":
+        return await _finish_reasoning_session(study_id, sess, ended_early)
+    sess["active"] = False
+    if sess.get("filler"):
+        sess["filler"].cancel()
+    time_used = min(time.time() - sess["started_at"], sess["time_limit"])
+    if quiet:
+        db.complete_session(sess["id"], "", True, time_used)
+        return {}
+    report = db.quiz_report(sess["id"])
+    report["time_used"] = round(time_used)
+    report["timed_out"] = timed_out
+    if report["answered"] == 0:
+        summary = "The quiz ended before any questions were answered, so there's no report yet."
+    else:
+        try:
+            summary = await agents.quiz_summary(report, guidance=db.active_guidance(study_id))
+        except Exception:
+            summary = (f"{report['correct']} of {report['planned_questions']} correct "
+                       f"({report['answered']} answered).")
+    db.complete_session(sess["id"], summary, ended_early, time_used)
+    mid = db.log_message(study_id, "assistant", summary, "session_summary")
+    return {"type": "quiz_report", "text": summary, "report": report,
+            "ended_early": ended_early, "timed_out": timed_out,
+            "message_id": mid, "route": "session_summary", "session": None}
+
+
+async def _finish_reasoning_session(study_id: str, sess: dict, ended_early: bool) -> dict:
+    """Older untimed sessions (reasoning dialogue + reflection after each case)."""
     report = db.session_report(sess["id"])
     if report["total_attempts"] == 0:
         summary = "You ended the session before answering any questions, so there's nothing to summarize yet."

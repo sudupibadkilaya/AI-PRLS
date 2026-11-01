@@ -113,6 +113,10 @@ def init() -> None:
             "ALTER TABLE attempts ADD COLUMN probe_turns INTEGER DEFAULT 0",
             "ALTER TABLE attempts ADD COLUMN max_support_level INTEGER",
             "ALTER TABLE messages ADD COLUMN thread_id TEXT",
+            "ALTER TABLE attempts ADD COLUMN seconds REAL",
+            "ALTER TABLE sessions ADD COLUMN mode TEXT",
+            "ALTER TABLE sessions ADD COLUMN time_limit INTEGER",
+            "ALTER TABLE sessions ADD COLUMN time_used REAL",
         ):
             try:
                 con.execute(stmt)
@@ -150,6 +154,7 @@ def log_attempt(
     used_scaffold: bool = False,
     session_id: str | None = None,
     dialogue: list[dict] | None = None,
+    seconds: float | None = None,
 ) -> str:
     aid = uuid.uuid4().hex
     with _conn() as con:
@@ -173,6 +178,8 @@ def log_attempt(
                 session_id,
             ),
         )
+        if seconds is not None:
+            con.execute("UPDATE attempts SET seconds=? WHERE id=?", (round(seconds, 1), aid))
         tutor = [d for d in (dialogue or []) if d["role"] == "tutor"]
         if tutor:
             con.execute(
@@ -314,23 +321,85 @@ def open_threads(study_id: str) -> list[dict]:
 
 # --- chapter practice sessions ------------------------------------------------
 
-def create_session(study_id: str, chapter: int | None, total: int) -> str:
+def create_session(study_id: str, chapter: int | None, total: int,
+                   mode: str = "timed", time_limit: int | None = None) -> str:
     sid = uuid.uuid4().hex
     with _conn() as con:
         con.execute(
-            "INSERT INTO sessions (id, study_id, chapter, total_questions, started_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (sid, study_id, chapter, total, time.time()),
+            "INSERT INTO sessions (id, study_id, chapter, total_questions, started_at, mode, time_limit) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sid, study_id, chapter, total, time.time(), mode, time_limit),
         )
     return sid
 
 
-def complete_session(session_id: str, summary: str, ended_early: bool) -> None:
+def complete_session(session_id: str, summary: str, ended_early: bool,
+                     time_used: float | None = None) -> None:
     with _conn() as con:
         con.execute(
-            "UPDATE sessions SET completed_at=?, summary=?, ended_early=? WHERE id=?",
-            (time.time(), summary, 1 if ended_early else 0, session_id),
+            "UPDATE sessions SET completed_at=?, summary=?, ended_early=?, time_used=? WHERE id=?",
+            (time.time(), summary, 1 if ended_early else 0,
+             round(time_used, 1) if time_used is not None else None, session_id),
         )
+
+
+def quiz_report(session_id: str) -> dict:
+    """Performance report for one timed quiz: score, time, domains, and every
+    answered question with the student's choice, the key and the rationales."""
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT question_json, selected, verdict, seconds, domain FROM attempts "
+            "WHERE session_id=? ORDER BY ts",
+            (session_id,),
+        ).fetchall()
+        sess = con.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
+    items, by_domain = [], {}
+    for i, r in enumerate(rows, 1):
+        try:
+            q = json.loads(r["question_json"])
+        except json.JSONDecodeError:
+            q = {}
+        try:
+            sel = json.loads(r["selected"])
+        except (json.JSONDecodeError, TypeError):
+            sel = []
+        ok = r["verdict"] == "correct"
+        d = r["domain"]
+        bucket = by_domain.setdefault(str(d) if d is not None else "unknown",
+                                      {"answered": 0, "correct": 0})
+        bucket["answered"] += 1
+        bucket["correct"] += int(ok)
+        items.append({
+            "number": i,
+            "topic": q.get("topic", ""),
+            "diagnosis": q.get("diagnosis", ""),
+            "domain": d,
+            "stem": q.get("stem", ""),
+            "options": q.get("options", []),
+            "selected": sel,
+            "correct_options": q.get("correct", []),
+            "rationales": q.get("rationales", []),
+            "reasoning_principle": q.get("reasoning_principle", ""),
+            "textbook_pointer": q.get("textbook_pointer", ""),
+            "verdict": r["verdict"],
+            "seconds": r["seconds"],
+        })
+    planned = sess["total_questions"] if sess else len(items)
+    correct = sum(1 for x in items if x["verdict"] == "correct")
+    timed = [x["seconds"] for x in items if x["seconds"] is not None]
+    return {
+        "chapter": sess["chapter"] if sess else None,
+        "planned_questions": planned,
+        "answered": len(items),
+        "unanswered": max(0, planned - len(items)),
+        "correct": correct,
+        "score": round(correct / planned, 3) if planned else None,
+        "accuracy_answered": round(correct / len(items), 3) if items else None,
+        "time_limit": sess["time_limit"] if sess else None,
+        "avg_seconds": round(sum(timed) / len(timed), 1) if timed else None,
+        "by_domain": by_domain,
+        "questions": items,
+    }
 
 
 def session_topics(session_id: str) -> list[str]:

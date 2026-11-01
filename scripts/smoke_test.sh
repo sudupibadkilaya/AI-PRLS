@@ -92,26 +92,39 @@ def check(name, cond):
 
 S = "S-SESS1"
 call("/api/login", {"study_id": S, "consent": True})
+# Single practice question keeps the reasoning dialogue + reflection
+_, r = call("/api/chat", {"study_id": S, "message": "quiz me on chapter 4"})
+check("practice question served", r.get("type") == "question")
+_, a = call("/api/answer", {"study_id": S, "selected": [0], "explanation": "because"})
+while a["type"] == "probe":
+    _, a = call("/api/probe", {"study_id": S, "reply": "my reasoning"})
+if a["type"] == "scaffold":
+    _, a = call("/api/answer", {"study_id": S, "selected": [1], "explanation": "reconsidered"})
+check("practice question gets feedback", a["type"] == "feedback")
+_, r = call("/api/reflect", {"study_id": S, "reflection": "reflection 1"})
+check("reflection acknowledged with Cristina's wording",
+      r.get("text") == "Thanks for reflecting on that \u2014 it's logged. Ready for another case whenever you are.")
+
+# Timed quiz (length 3 for the test): straight to the next question, report at the end
 _, r = call("/api/session/start", {"study_id": S, "chapter": 2})
-check("session starts with question 1 of 3", r.get("type") == "question" and r["session"] == {"number": 1, "total": 3, "chapter": 2})
-check("session question has no answer leak", "correct" not in json.dumps(r.get("question", {})))
-for n in (1, 2, 3):
-    # answer, talk through the reasoning, then reconsider if needed
-    _, a = call("/api/answer", {"study_id": S, "selected": [0], "explanation": "because"})
-    while a["type"] == "probe":
-        _, a = call("/api/probe", {"study_id": S, "reply": "my reasoning"})
-    if a["type"] == "scaffold":
-        _, a = call("/api/answer", {"study_id": S, "selected": [1], "explanation": "reconsidered"})
-    check(f"question {n} feedback carries session counter", a["type"] == "feedback" and a["session"]["number"] == n)
-    _, r = call("/api/reflect", {"study_id": S, "reflection": f"reflection {n}"})
-    if n < 3:
-        check(f"reflection {n} acknowledged with Cristina's wording",
-              r.get("text") == "Thanks for reflecting on that \u2014 it's logged. Ready for another case whenever you are.")
-        _, r = call("/api/session/next", {"study_id": S})
-        check(f"next serves question {n+1} of 3", r.get("session", {}).get("number") == n + 1)
-check("last reflection returns summative feedback", r.get("type") == "session_summary")
-check("summary covers only this session", r.get("report", {}).get("total_attempts") == 3
-      and r["report"].get("reflections_completed") == 3)
+check("quiz starts with question 1 of 3, timed",
+      r.get("type") == "quiz_question" and r["session"]["number"] == 1 and r["session"]["total"] == 3
+      and r["session"]["mode"] == "timed" and r["session"]["seconds_left"] > 0)
+check("quiz question has no answer leak", "correct" not in json.dumps(r.get("question", {})))
+for n in (1, 2):
+    _, r = call("/api/quiz/answer", {"study_id": S, "selected": [0], "seconds": 30})
+    check(f"answer {n} goes straight to question {n+1}", r.get("type") == "quiz_question" and r["session"]["number"] == n + 1)
+_, r = call("/api/quiz/answer", {"study_id": S, "selected": [1], "seconds": 30})
+check("last answer returns the performance report", r.get("type") == "quiz_report")
+rep = r.get("report", {})
+check("report covers this quiz only", rep.get("answered") == 3 and rep.get("planned_questions") == 3)
+check("report reviews every question with the key", len(rep.get("questions", [])) == 3
+      and all("correct_options" in q and q["stem"] for q in rep["questions"]))
+_, r = call("/api/session/start", {"study_id": S, "chapter": 5})
+_, r = call("/api/quiz/answer", {"study_id": S, "selected": [0], "seconds": 10})
+_, r = call("/api/session/end", {"study_id": S, "timed_out": True})
+check("time-up report counts unanswered", r.get("type") == "quiz_report" and r.get("timed_out")
+      and r["report"]["unanswered"] == 2)
 
 code, _ = call("/api/instructor/students", key="wrong")
 check("instructor API rejects bad key", code == 401)
@@ -121,10 +134,11 @@ K = "smoke-test-key"
 _, st = call("/api/instructor/students", key=K)
 check("instructor sees students", any(x["study_id"] == S for x in st))
 _, at = call(f"/api/instructor/attempts?study_id={S}", key=K)
-check("instructor sees reasoning + reflections", len(at) == 3 and all(x["reflection"] and x["explanation"] for x in at))
-check("instructor sees the reasoning dialogue", all(x["dialogue"] for x in at))
+practice = [x for x in at if x["explanation"]]
+check("instructor sees reasoning + reflections", len(at) == 5 and len(practice) == 1 and practice[0]["reflection"])
+check("instructor sees the reasoning dialogue", practice[0]["dialogue"])
 _, ss = call(f"/api/instructor/sessions?study_id={S}", key=K)
-check("instructor sees session summary", len(ss) == 1 and ss[0]["summary"])
+check("instructor sees quiz reports", len(ss) == 2 and all(x["summary"] and x["mode"] == "timed" for x in ss))
 _, n = call("/api/instructor/coach", {"study_id": S, "note": "Ask what the client's safety needs are first."}, key=K)
 check("instructor can add a coaching note", n.get("ok"))
 _, r = call("/api/chat", {"study_id": S, "message": "quiz me"})
