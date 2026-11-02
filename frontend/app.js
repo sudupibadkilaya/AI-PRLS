@@ -109,11 +109,41 @@ function stopTimer() {
   timerId = null;
   $("#session-timer").hidden = true;
 }
-function endQuiz(timedOut) {
+async function endQuiz(timedOut) {
   if (quizEnding) return;
   quizEnding = true;
   if (timedOut) addTutorText("Time is up. Here is your report.");
-  callApi("/api/session/end", { study_id: studyId, timed_out: !!timedOut }, "Writing your report\u2026");
+  const pending = addThinking("Writing your report\u2026");
+  setBusy(true);
+  // Retry a few times: the report must not be lost to a dropped connection.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch("/api/session/end", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ study_id: studyId, timed_out: !!timedOut }),
+      });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      pending.remove();
+      setBusy(false);
+      renderResponse(data);
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+    }
+  }
+  pending.remove();
+  setBusy(false);
+  quizEnding = false;
+  const b = msgShell("Tutor", "tutor");
+  b.style.whiteSpace = "normal";
+  b.appendChild(document.createTextNode("The connection dropped while writing your report. Your answers are saved. "));
+  const btn = document.createElement("button");
+  btn.className = "qsubmit";
+  btn.textContent = "Show my report";
+  btn.addEventListener("click", () => { b.parentElement.remove(); endQuiz(timedOut); });
+  b.appendChild(btn);
+  scrollDown();
 }
 
 async function callApi(url, body, waitText) {

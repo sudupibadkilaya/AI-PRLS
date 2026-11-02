@@ -264,8 +264,34 @@ def _wordlist(text: str) -> list[str]:
     return re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower()).split()
 
 
+# Conditions that make the same kind of case even under different names.
+_DX_FAMILIES = [
+    ("dementia", "alzheimer", "cognitive impairment", "mild cognitive", "neurocognitive"),
+    ("stroke", "cva", "cerebrovascular", "hemipleg", "hemipares", "hemisphere"),
+    ("fibromyalgia", "chronic fatigue", "chronic pain", "back pain", "myalgic"),
+    ("depress", "major depressive", "dysthymi"),
+    ("anxiety", "panic", "phobia"),
+    ("arthritis", "osteoarthritis", "rheumatoid"),
+    ("heart failure", "cardiac", "myocardial", "coronary", "cabg"),
+    ("copd", "pulmonary", "emphysema", "bronchitis"),
+    ("autism", "asd"),
+]
+
+
+def _dx_family(text: str) -> int | None:
+    t = (text or "").lower()
+    for i, fam in enumerate(_DX_FAMILIES):
+        if any(k in t for k in fam):
+            return i
+    return None
+
+
 def _same_diagnosis(a: str, b: str) -> bool:
-    """'stroke' vs 'left CVA (stroke)' vs 'right hemisphere stroke' -> same."""
+    """'stroke' vs 'left CVA (stroke)' vs 'right hemisphere stroke' -> same;
+    'mild cognitive impairment' vs 'Alzheimer's disease' -> same family."""
+    fa, fb = _dx_family(a), _dx_family(b)
+    if fa is not None and fa == fb:
+        return True
     wa = {w for w in _wordlist(a) if len(w) > 3 and w not in _DX_STOP}
     wb = {w for w in _wordlist(b) if len(w) > 3 and w not in _DX_STOP}
     if not wa or not wb:
@@ -347,6 +373,38 @@ def case_signature(q: dict) -> dict:
             "ask": " ".join(_last_question(stem).split()[:9]), "ask_key": _ask_key(stem)}
 
 
+_KEEP_CAPS = {"FIRST", "NEXT", "MOST", "BEST", "PRIMARY", "PRIORITY", "CONTRAINDICATED", "OT", "OTR",
+              "COTA", "ADL", "ADLS", "IADL", "IADLS", "COPD", "TBI", "CVA", "MS", "ASD", "ADHD", "PE"}
+
+
+def _fix_shouting(stem: str) -> str:
+    """'WHAT IS THE MOST EFFECTIVE NEXT STEP?' -> 'What is the MOST effective NEXT step?'
+    Any run of 3+ all-capital words is lowered, keeping the exam key words."""
+    words = (stem or "").split()
+    core = [re.sub(r"[^A-Za-z]", "", w) for w in words]
+    caps = [len(c) > 1 and c.isupper() or c in ("A", "I") and i + 1 < len(core) and core[i + 1].isupper()
+            for i, c in enumerate(core)]
+    out, i = list(words), 0
+    while i < len(words):
+        if caps[i]:
+            j = i
+            while j < len(words) and caps[j]:
+                j += 1
+            if j - i >= 3:
+                for k in range(i, j):
+                    c = core[k]
+                    if c.upper() in _KEEP_CAPS:
+                        out[k] = words[k].replace(c, {"ADLS": "ADLs", "IADLS": "IADLs"}.get(c, c))
+                    else:
+                        out[k] = words[k].lower()
+                        if k == 0 or re.search(r"[.?!]$", words[k - 1]):
+                            out[k] = out[k][:1].upper() + out[k][1:]
+            i = j
+        else:
+            i += 1
+    return " ".join(out)
+
+
 def _validate_question(q: dict) -> None:
     n_opts = len(q.get("options", []))
     n_correct = len(q.get("correct", []))
@@ -359,6 +417,7 @@ def _validate_question(q: dict) -> None:
         q["bloom_level"] = "analysis"
     if q["bloom_level"] in ("knowledge", "comprehension") and not config.MOCK_LLM:
         raise ValueError("Recall-level item; NBCOT practice needs case reasoning")
+    q["stem"] = _fix_shouting(q.get("stem", ""))
     q["diagnosis"] = str(q.get("diagnosis") or "").strip()[:60]
     q["setting"] = str(q.get("setting") or "").strip()[:60]
     if not q.get("reasoning_principle"):

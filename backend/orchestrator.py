@@ -26,6 +26,11 @@ _pending: dict[str, dict] = {}
 #         "current": int  # number of the question most recently served}
 _sessions: dict[str, dict] = {}
 
+# The last quiz report per student, so a report request that is retried (e.g.
+# the connection dropped when the timer ran out) still gets the report.
+_last_reports: dict[str, dict] = {}
+_finishing: dict[str, asyncio.Event] = {}  # report being written right now
+
 _STUDENT_FIELDS = ("format", "stem", "options", "chapter", "domain", "topic", "bloom_level")
 REFLECT_ACK = "Thanks for reflecting on that — it's logged. Ready for another case whenever you are."
 
@@ -446,6 +451,7 @@ async def handle_session_start(study_id: str, chapter: int | None, total: int | 
     """Start a timed quiz and serve question 1."""
     if study_id in _sessions:
         await _finish_session(study_id, ended_early=True, quiet=True)
+    _last_reports.pop(study_id, None)
     _pending.pop(study_id, None)
     total = total or config.SESSION_LENGTH
     time_limit = total * config.QUIZ_SECONDS_PER_QUESTION
@@ -522,6 +528,13 @@ async def handle_session_next(study_id: str) -> dict:
 async def handle_session_end(study_id: str, timed_out: bool = False) -> dict:
     """The student ends the quiz, or the timer ran out: report on what was answered."""
     if study_id not in _sessions:
+        if study_id in _finishing:  # a retry while the first request is still writing it
+            try:
+                await asyncio.wait_for(_finishing[study_id].wait(), timeout=90)
+            except asyncio.TimeoutError:
+                pass
+        if study_id in _last_reports:
+            return _last_reports[study_id]
         text = "There's no quiz running right now."
         mid = db.log_message(study_id, "assistant", text, "session")
         return {"type": "text", "text": text, "message_id": mid, "route": "session"}
@@ -541,6 +554,16 @@ async def _finish_session(study_id: str, ended_early: bool, timed_out: bool = Fa
     if quiet:
         db.complete_session(sess["id"], "", True, time_used)
         return {}
+    done = _finishing[study_id] = asyncio.Event()
+    try:
+        return await _write_quiz_report(study_id, sess, ended_early, timed_out, time_used)
+    finally:
+        done.set()
+        _finishing.pop(study_id, None)
+
+
+async def _write_quiz_report(study_id: str, sess: dict, ended_early: bool, timed_out: bool,
+                             time_used: float) -> dict:
     report = db.quiz_report(sess["id"])
     report["time_used"] = round(time_used)
     report["timed_out"] = timed_out
@@ -548,15 +571,31 @@ async def _finish_session(study_id: str, ended_early: bool, timed_out: bool = Fa
         summary = "The quiz ended before any questions were answered, so there's no report yet."
     else:
         try:
-            summary = await agents.quiz_summary(report, guidance=db.active_guidance(study_id))
-        except Exception:
-            summary = (f"{report['correct']} of {report['planned_questions']} correct "
-                       f"({report['answered']} answered).")
+            summary = await asyncio.wait_for(
+                agents.quiz_summary(report, guidance=db.active_guidance(study_id)), timeout=45)
+        except (Exception, asyncio.TimeoutError):
+            summary = _plain_quiz_summary(report)
     db.complete_session(sess["id"], summary, ended_early, time_used)
     mid = db.log_message(study_id, "assistant", summary, "session_summary")
-    return {"type": "quiz_report", "text": summary, "report": report,
-            "ended_early": ended_early, "timed_out": timed_out,
-            "message_id": mid, "route": "session_summary", "session": None}
+    payload = {"type": "quiz_report", "text": summary, "report": report,
+               "ended_early": ended_early, "timed_out": timed_out,
+               "message_id": mid, "route": "session_summary", "session": None}
+    _last_reports[study_id] = payload
+    return payload
+
+
+def _plain_quiz_summary(report: dict) -> str:
+    """Summary without the model (used if the model is slow or unavailable)."""
+    mins = round((report.get("time_used") or 0) / 60)
+    missed = [q for q in report.get("questions", []) if q.get("verdict") != "correct"]
+    topics = [q.get("diagnosis") or q.get("topic") for q in missed]
+    lines = [f"Overall \u2014 {report.get('correct', 0)} of {report.get('planned_questions', 0)} correct "
+             f"({report.get('answered', 0)} answered) in about {mins} min."]
+    if topics:
+        lines.append("What to review \u2014 " + ", ".join(t for t in topics if t) + ".")
+    lines.append("Next steps \u2014 Open each missed question below to see the correct answer and "
+                 "why, then reread those topics in your TherapyEd book.")
+    return "\n\n".join(lines)
 
 
 async def _finish_reasoning_session(study_id: str, sess: dict, ended_early: bool) -> dict:
