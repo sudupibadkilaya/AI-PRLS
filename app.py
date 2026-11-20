@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend import config, db, orchestrator, rag
+from backend import book, config, db, orchestrator, rag
 
 app = FastAPI(title="AI-PRLS", docs_url=None, redoc_url=None)
 
@@ -62,6 +62,7 @@ class ProbeBody(BaseModel):
 
 class SessionStartBody(BaseModel):
     study_id: str
+    mode: str = Field(default="timed", pattern="^(timed|practice)$")
     chapter: int | None = Field(default=None, ge=config.FIRST_PRACTICE_CHAPTER, le=config.CHAPTERS)
     total: int | None = Field(default=None, ge=1, le=config.MAX_SESSION_LENGTH)
 
@@ -147,7 +148,7 @@ async def reflect(body: ReflectBody):
 async def session_start(body: SessionStartBody):
     sid = body.study_id.strip()
     return orchestrator.attach_instructor_note(
-        sid, await orchestrator.handle_session_start(sid, body.chapter, body.total)
+        sid, await orchestrator.handle_session_start(sid, body.chapter, body.total, body.mode)
     )
 
 
@@ -166,6 +167,9 @@ async def session_end(body: SessionEndBody):
 def public_config():
     return {"session_length": config.SESSION_LENGTH, "chapters": config.CHAPTERS,
             "quiz_seconds_per_question": config.QUIZ_SECONDS_PER_QUESTION,
+            "levels": config.LEVELS,
+            "adaptive": config.ADAPTIVE,
+            "book_loaded": book.available(),
             "first_chapter": config.FIRST_PRACTICE_CHAPTER,
             "weeks": {str(k): v for k, v in config.STUDY_PLAN_WEEKS.items()}}
 

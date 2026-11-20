@@ -117,6 +117,9 @@ def init() -> None:
             "ALTER TABLE sessions ADD COLUMN mode TEXT",
             "ALTER TABLE sessions ADD COLUMN time_limit INTEGER",
             "ALTER TABLE sessions ADD COLUMN time_used REAL",
+            "ALTER TABLE students ADD COLUMN level INTEGER DEFAULT 2",
+            "ALTER TABLE sessions ADD COLUMN start_level INTEGER",
+            "ALTER TABLE sessions ADD COLUMN next_level INTEGER",
         ):
             try:
                 con.execute(stmt)
@@ -334,13 +337,34 @@ def create_session(study_id: str, chapter: int | None, total: int,
 
 
 def complete_session(session_id: str, summary: str, ended_early: bool,
-                     time_used: float | None = None) -> None:
+                     time_used: float | None = None, next_level: int | None = None) -> None:
     with _conn() as con:
         con.execute(
-            "UPDATE sessions SET completed_at=?, summary=?, ended_early=?, time_used=? WHERE id=?",
+            "UPDATE sessions SET completed_at=?, summary=?, ended_early=?, time_used=?, "
+            "next_level=COALESCE(?, next_level) WHERE id=?",
             (time.time(), summary, 1 if ended_early else 0,
-             round(time_used, 1) if time_used is not None else None, session_id),
+             round(time_used, 1) if time_used is not None else None, next_level, session_id),
         )
+
+
+def get_level(study_id: str) -> int:
+    """The student's current difficulty level (1 Foundation .. 3 Challenge)."""
+    with _conn() as con:
+        row = con.execute("SELECT level FROM students WHERE study_id=?", (study_id,)).fetchone()
+    lvl = row["level"] if row and row["level"] else 2
+    return max(1, min(3, int(lvl)))
+
+
+def set_level(study_id: str, level: int) -> None:
+    with _conn() as con:
+        con.execute("INSERT OR IGNORE INTO students (study_id, consented_at) VALUES (?, ?)",
+                    (study_id, time.time()))
+        con.execute("UPDATE students SET level=? WHERE study_id=?", (max(1, min(3, level)), study_id))
+
+
+def set_session_start_level(session_id: str, level: int) -> None:
+    with _conn() as con:
+        con.execute("UPDATE sessions SET start_level=? WHERE id=?", (level, session_id))
 
 
 def quiz_report(session_id: str) -> dict:
@@ -383,7 +407,28 @@ def quiz_report(session_id: str) -> dict:
             "textbook_pointer": q.get("textbook_pointer", ""),
             "verdict": r["verdict"],
             "seconds": r["seconds"],
+            "level": q.get("level"),
+            "source": q.get("source"),
         })
+    # Where to go back to: the sources of the missed questions, grouped by
+    # chapter and section (most-missed first).
+    review: dict[tuple, dict] = {}
+    for x in items:
+        src = x.get("source") or {}
+        if x["verdict"] == "correct" or src.get("chapter") is None:
+            continue
+        key = (src.get("chapter"), src.get("section") or "")
+        r_ = review.setdefault(key, {"chapter": src.get("chapter"),
+                                     "chapter_title": src.get("chapter_title") or "",
+                                     "section": src.get("section") or "", "pages": set(),
+                                     "missed": 0, "questions": []})
+        r_["missed"] += 1
+        r_["questions"].append(x["number"])
+        if src.get("pages"):
+            r_["pages"].add(str(src["pages"]))
+    review_list = sorted(review.values(), key=lambda v: (-v["missed"], v["chapter"]))
+    for v in review_list:
+        v["pages"] = ", ".join(sorted(v["pages"]))
     planned = sess["total_questions"] if sess else len(items)
     correct = sum(1 for x in items if x["verdict"] == "correct")
     timed = [x["seconds"] for x in items if x["seconds"] is not None]
@@ -398,6 +443,8 @@ def quiz_report(session_id: str) -> dict:
         "time_limit": sess["time_limit"] if sess else None,
         "avg_seconds": round(sum(timed) / len(timed), 1) if timed else None,
         "by_domain": by_domain,
+        "review": review_list,
+        "start_level": sess["start_level"] if sess and "start_level" in sess.keys() else None,
         "questions": items,
     }
 

@@ -79,6 +79,23 @@ included; replace them with the team's own chapter maps and crosswalks
 (Parts I–VIII), then rerun the command. **Never put textbook text in that
 folder** — see `companion_docs/README.md`.
 
+### 2b. Load the e-book (optional, server only)
+
+Questions are written from the team's e-book when it is loaded: the app first
+retrieves a passage, writes an original question from it (never copying the
+book's text or its own practice questions), and records the chapter, section
+and pages, so the end-of-session report can tell students exactly what to
+review.
+
+```bash
+mkdir -p ebook                     # git-ignored: the book never goes to GitHub
+# copy the PDF or EPUB into ebook/ on the server, then:
+python scripts/import_ebook.py ebook/<book>.pdf
+```
+
+Check the chapter list it prints, then restart the app. If no chapters are
+found, pass `--chapter-pattern` to match how the book writes chapter headings.
+
 ### 3. Start the LLM (GPU machine)
 
 ```bash

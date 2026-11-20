@@ -214,3 +214,18 @@ def context_block(query: str, chapter: int | None = None) -> str:
         return "(no companion notes retrieved — rely on entry-level OT knowledge)"
     lines = [f"--- from {h['source']} ---\n{h['text']}" for h in hits]
     return "\n\n".join(lines)
+
+
+def source_for(query: str, chapter: int | None = None) -> dict | None:
+    """Where a question written from the companion notes came from (used when
+    no e-book is loaded), so feedback can still point to a chapter/section."""
+    hits = retrieve(query, config.TOP_K * 4 if chapter else 1)
+    if chapter:
+        hits = [h for h in hits if source_chapter(h["source"]) in (None, chapter)]
+    if not hits:
+        return {"kind": "notes", "chapter": chapter, "section": "", "pages": ""} if chapter else None
+    h = hits[0]
+    m = re.match(r"\[([^\]]*)\]", h["text"])
+    return {"kind": "notes", "doc": h["source"],
+            "chapter": source_chapter(h["source"]) or chapter,
+            "section": (m.group(1).strip() if m else ""), "pages": ""}

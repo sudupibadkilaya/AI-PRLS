@@ -4,3 +4,10 @@ data/aiprls.sqlite3
 data/companion_index.npz
 *.pyc
 .DS_Store
+
+# The e-book and anything built from it stay on the server only (public repo).
+ebook/
+data/book_chunks.jsonl
+data/book_index.npz
+*.pdf
+*.epub

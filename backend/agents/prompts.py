@@ -592,13 +592,43 @@ questions were left unanswered when time ran out, say so plainly.
 
 Strengths — the domains or kinds of decisions the student got right.
 
-What to review — the patterns in the missed questions (e.g. "choosing a later
-step when the question asked what to do FIRST", or a domain or diagnosis
-group that was missed more than once). Be specific; name topics.
+What to review — tell the student exactly which chapters and sections to go
+back to, using the "Sections to review" list in the FACTS (copy the chapter
+and section names exactly; most-missed first). Then name one pattern in the
+missed questions (e.g. "choosing a later step when the question asked what to
+do FIRST"). If the FACTS give a difficulty change, say in one sentence what
+level the next session will be and why (their score).
 
 Next steps — two or three concrete actions, including which chapter or topic
 of their own TherapyEd book to reread (reference only) and what to try in the
 next quiz.
 
 Under about 220 words. Encouraging but honest. No markdown tables, no emoji.
+"""
+
+# ---------------------------------------------------------------------------
+# 10) Adaptive difficulty + writing from an e-book passage (Prof. Xi / Nov call)
+# ---------------------------------------------------------------------------
+LEVEL_GUIDE = {
+    1: ("DIFFICULTY: Foundation. Write a straightforward case: one clear "
+        "occupational performance problem, a common diagnosis, and only the "
+        "details that matter. Distractors are clearly weaker once the key fact "
+        "is noticed. Target the application level."),
+    2: ("DIFFICULTY: Standard. Write a typical NBCOT-level case: the best answer "
+        "depends on combining two details (e.g. the stage of the OT process and "
+        "the client's goal). Target the analysis level."),
+    3: ("DIFFICULTY: Challenge. Write a demanding case: a comorbidity or "
+        "competing priorities, subtle cues, and four plausible options. The best "
+        "answer requires weighing safety, the stage of the OT process and the "
+        "client's goals. Target the analysis or evaluation level."),
+}
+
+FROM_PASSAGE_RULES = """
+WRITE THE ITEM FROM THE SOURCE PASSAGE BELOW (retrieved from the team's e-book):
+- The clinical facts behind the correct answer must come from this passage.
+  Do not rely on your own memory for the key.
+- Write a NEW case in your own words. Do not copy sentences or phrases from
+  the passage, and do not reuse any practice question that appears in the book.
+- Set "chapter" to the passage's chapter. The "textbook_pointer" will be set
+  from the passage, so keep yours short.
 """

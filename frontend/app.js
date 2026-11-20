@@ -50,6 +50,9 @@ let quizSecondsPerQ = 85;
 fetch("/api/config").then((r) => r.json()).then((c) => {
   sessionLength = c.session_length;
   const sel = $("#chapter-select");
+  const all = document.createElement("option");
+  all.value = ""; all.textContent = "All chapters (mixed)";
+  sel.appendChild(all);
   for (let i = c.first_chapter || 1; i <= c.chapters; i++) {
     const o = document.createElement("option");
     const wk = (c.weeks || {})[String(i)];
@@ -65,7 +68,8 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 $("#session-start-btn").addEventListener("click", () => {
   setOpenMode(false);
   const chapter = parseInt($("#chapter-select").value, 10) || null;
-  addStudent(`Start a timed ${sessionLength}-question quiz on Chapter ${chapter}.`);
+  addStudent(`Start a timed ${sessionLength}-question quiz on ` +
+             (chapter ? `Chapter ${chapter}.` : "all chapters."));
   callApi("/api/session/start", { study_id: studyId, chapter }, "Preparing your quiz\u2026");
 });
 $("#session-end-btn").addEventListener("click", () => {
@@ -605,6 +609,23 @@ function renderQuizReport(data) {
         b.appendChild(row);
       });
     }
+  }
+
+  // Where to go back to: chapters / sections the missed questions came from
+  if (r.review && r.review.length) {
+    const head = document.createElement("div");
+    head.className = "pstats-heading";
+    head.textContent = "What to review";
+    b.appendChild(head);
+    const ul = document.createElement("ul");
+    ul.className = "review-list";
+    r.review.forEach((v) => {
+      const li = document.createElement("li");
+      const label = v.label || `Chapter ${v.chapter}` + (v.section ? ` \u2014 ${v.section}` : "");
+      li.textContent = `${label}  (${v.missed} missed: question${v.questions.length > 1 ? "s" : ""} ${v.questions.join(", ")})`;
+      ul.appendChild(li);
+    });
+    b.appendChild(ul);
   }
 
   const t = document.createElement("div");

@@ -55,6 +55,25 @@ EMBED_DEVICE = os.getenv("AIPRLS_EMBED_DEVICE", "cpu")  # set "cuda:2" to use th
 TOP_K = int(os.getenv("AIPRLS_TOP_K", "4"))
 CHUNK_CHARS = 1200
 
+# --- E-book (the team's licensed copy; kept on the server only) --------------
+# Put the file in ebook/ (git-ignored) and run: python scripts/import_ebook.py
+# The app then writes every question from a retrieved book passage and records
+# its chapter / section / pages as the question's source.
+BOOK_DIR = ROOT / "ebook"
+BOOK_CHUNKS_PATH = ROOT / "data" / "book_chunks.jsonl"
+BOOK_INDEX_PATH = ROOT / "data" / "book_index.npz"
+BOOK_CHUNK_CHARS = int(os.getenv("AIPRLS_BOOK_CHUNK_CHARS", "1500"))
+
+# --- Adaptive difficulty ----------------------------------------------------
+# A correct answer moves the next question up a level, a wrong one down a
+# level; the next session starts at a level set by this session's score.
+LEVELS = {1: "Foundation", 2: "Standard", 3: "Challenge"}
+# Off for now (Prof. Xi, Nov 19: the team still has to define what they want).
+# Turn on with AIPRLS_ADAPTIVE=1; until then every question is "Standard".
+ADAPTIVE = os.getenv("AIPRLS_ADAPTIVE", "0") == "1"
+LEVEL_UP_SCORE = float(os.getenv("AIPRLS_LEVEL_UP_SCORE", "0.8"))
+LEVEL_DOWN_SCORE = float(os.getenv("AIPRLS_LEVEL_DOWN_SCORE", "0.5"))
+
 # --- App / research logging --------------------------------------------------
 DB_PATH = ROOT / "data" / "aiprls.sqlite3"
 HOST = os.getenv("AIPRLS_HOST", "0.0.0.0")

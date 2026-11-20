@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from .. import config, db, llm, rag
+from .. import book, config, db, llm, rag
 from . import prompts
 
 
@@ -43,6 +43,8 @@ async def make_question(
     guidance: list[str] | None = None,
     avoid_cases: list[dict] | None = None,
     practice_area: str | None = None,
+    level: int | None = None,
+    passage: dict | None = None,
 ) -> dict:
     """Generate one original NBCOT-style item, grounded in companion notes.
 
@@ -50,14 +52,24 @@ async def make_question(
     position: (n, total) when the item is part of a chapter session, so the
     maker can vary domains and difficulty across the set.
     avoid_cases: diagnosis / setting / stem opening of the questions already
-    in this quiz, so consecutive items are not the same case (Dr. Dumitrescu)."""
+    in this quiz, so consecutive items are not the same case (Dr. Dumitrescu).
+    level: adaptive difficulty 1 (Foundation) .. 3 (Challenge).
+    passage: an e-book passage (book.pick_passage) to write the item FROM;
+    retrieval comes first, and the item records the passage as its source."""
     query = f"chapter {chapter} {topic}" if chapter else topic
-    context = rag.context_block(query, chapter=chapter)
+    if passage:
+        chapter = passage.get("chapter") or chapter
+        extra = book.neighbours(passage, 1)
+        context = (f"SOURCE PASSAGE (the team's e-book: {book.source_label(book.source_of(passage))}):\n"
+                   f"{passage['text']}"
+                   + "".join(f"\n\nRelated passage from the same section:\n{x['text'][:800]}" for x in extra))
+    else:
+        context = rag.context_block(query, chapter=chapter)
     recent = avoid_topics if avoid_topics is not None else db.recent_topics(study_id)
     if chapter:
-        title = rag.chapter_title(chapter)
+        title = (book.chapter_title(chapter) if passage else None) or rag.chapter_title(chapter)
         chapter_line = f"Chapter {chapter}" + (f" ({title})" if title else "")
-        if not rag.has_chapter_notes(chapter):
+        if not passage and not rag.has_chapter_notes(chapter):
             chapter_line += (" — the team has no chapter notes for it yet, so base the case "
                              "on the entry-level OT practice content this chapter covers")
     else:
@@ -72,15 +84,19 @@ async def make_question(
             "and vary the NBCOT domain across the session.\n"
         )
     variety_note = _variety_note(avoid_cases)
-    if practice_area:
+    if level:
+        variety_note = prompts.LEVEL_GUIDE[level] + "\n" + variety_note
+    if practice_area and not passage:
         variety_note = (f"PRACTICE AREA for this question: {practice_area}. Choose a client and "
                         "diagnosis from this area (unless the requested chapter's content clearly "
                         "cannot fit it).\n") + variety_note
     user_msg = (
         f"Requested chapter: {chapter_line}\n"
         f"Requested topic: {topic}\n{session_note}{variety_note}\n"
-        f"Companion notes (the study team's own material):\n{context}\n\n"
-        f"Topics of this student's recent questions (avoid repeating these "
+        + (prompts.FROM_PASSAGE_RULES if passage else "")
+        + (f"{context}\n\n" if passage else
+           f"Companion notes (the study team's own material):\n{context}\n\n")
+        + f"Topics of this student's recent questions (avoid repeating these "
         f"scenarios): {', '.join(recent) if recent else 'none yet'}\n\n"
         "Write one new case-based, single-best-answer question now."
         + _guidance_block(guidance)
@@ -104,8 +120,10 @@ async def make_question(
             ]
             continue
         issues = [] if config.MOCK_LLM else quality_issues(q) + variety_issues(q, avoid_cases)
+        if passage and not config.MOCK_LLM:
+            issues += passage_issues(q, passage)
         if not issues and not config.MOCK_LLM:
-            issues = await key_check(q)
+            issues = await key_check(q, passage)
         if best is None or len(issues) < best[0]:
             best = (len(issues), q)
         if not issues:
@@ -121,14 +139,34 @@ async def make_question(
     q.pop("_key_conflict", None)
     if chapter:
         q["chapter"] = chapter  # the requested chapter is authoritative
+    if level:
+        q["level"] = level
+    if passage:
+        q["source"] = book.source_of(passage)
+        q["textbook_pointer"] = "Review: " + book.source_label(q["source"])
+    else:
+        q["source"] = rag.source_for(query, chapter)
     return q
 
 
-async def key_check(q: dict) -> list[str]:
+def passage_issues(q: dict, passage: dict) -> list[str]:
+    """The item must be written from the passage, never copied from it."""
+    text = " ".join([q.get("stem", "")] + list(q.get("options", [])))
+    run = book.copied_run(text, passage["text"])
+    if run:
+        return [f'The item copies the book\'s wording ("{run}..."). Write the case and options '
+                "entirely in your own words; use the passage only for the clinical facts."]
+    return []
+
+
+async def key_check(q: dict, passage: dict | None = None) -> list[str]:
     """Have the model answer the finished item on its own. If it picks a
-    different option, the key is wrong or two options are defensible."""
+    different option, the key is wrong or two options are defensible. With a
+    source passage, the checker also sees it, so the key must agree with it."""
     letters = "ABCD"
     item = q["stem"] + "\n" + "\n".join(f"{letters[i]}. {o}" for i, o in enumerate(q["options"]))
+    if passage:
+        item = f"Reference passage:\n{passage['text'][:2500]}\n\nItem:\n{item}"
     try:
         raw = await llm.chat("solver", prompts.ITEM_CHECKER, [{"role": "user", "content": item}])
         r = llm.extract_json(raw)
@@ -605,14 +643,25 @@ async def quiz_summary(report: dict, guidance: list[str] | None = None) -> str:
             "correct": opts[key] if isinstance(key, int) and key < len(opts) else None,
         })
     missed = [q for q in compact["questions"] if q["result"] != "correct"]
+    names = {int(k): v for k, v in (report.get("level_names") or {}).items()}
+    compact.pop("review", None)
+    compact.pop("level_names", None)
     facts = [
         f"Score: {report.get('correct', 0)} of {report.get('planned_questions', 0)} correct "
         f"({report.get('answered', 0)} answered, {report.get('unanswered', 0)} unanswered).",
-        f"Time used: {mmss(report.get('time_used'))} of {mmss(report.get('time_limit'))}"
-        + (" (time ran out)." if report.get("timed_out") else "."),
+        (f"Time used: {mmss(report.get('time_used'))} of {mmss(report.get('time_limit'))}"
+         + (" (time ran out)." if report.get("timed_out") else "."))
+        if report.get("time_limit") else
+        f"Practice session (untimed, feedback after each question); time spent {mmss(report.get('time_used'))}.",
         f"Average time per answered question: {mmss(report.get('avg_seconds'))}.",
         "By domain: " + "; ".join(f"Domain {d}: {v['correct']} of {v['answered']} correct"
                                  for d, v in sorted((report.get("by_domain") or {}).items())) + ".",
+        "Sections to review (where the missed questions came from, most missed first): "
+        + ("; ".join(f"{r.get('label') or 'Chapter ' + str(r.get('chapter'))} "
+                     f"({r['missed']} missed)" for r in (report.get("review") or [])) or "none") + ".",
+        (f"Difficulty: this session started at {names.get(report.get('start_level'), '?')} and "
+         f"ended at {names.get(report.get('end_level'), '?')}; the next session will be "
+         f"{names.get(report.get('next_level'), '?')}." if report.get("next_level") else ""),
         "Missed questions: " + ("; ".join(
             f"#{q['number']} {q.get('diagnosis') or q.get('topic')} (Domain {q.get('domain')}): chose "
             f"\"{q.get('chose')}\", correct \"{q.get('correct')}\"" for q in missed) or "none") + ".",
