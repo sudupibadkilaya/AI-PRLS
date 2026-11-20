@@ -70,7 +70,11 @@ $("#session-start-btn").addEventListener("click", () => {
   const chapter = parseInt($("#chapter-select").value, 10) || null;
   addStudent(`Start a timed ${sessionLength}-question quiz on ` +
              (chapter ? `Chapter ${chapter}.` : "all chapters."));
-  callApi("/api/session/start", { study_id: studyId, chapter }, "Preparing your quiz\u2026");
+  const btn = $("#session-start-btn");
+  if (btn.disabled) return;           // one start at a time
+  btn.disabled = true;
+  callApi("/api/session/start", { study_id: studyId, chapter }, "Preparing your quiz\u2026")
+    .finally(() => { btn.disabled = false; });
 });
 $("#session-end-btn").addEventListener("click", () => {
   if (!confirm("End the quiz now and see your report?")) return;
@@ -393,6 +397,7 @@ async function sendMessage(text) {
 function setBusy(v) { $("#send-btn").disabled = v; }
 
 function renderResponse(data) {
+  if (data.type === "superseded") return;   // an older, replaced request
   if (data.instructor_note) renderInstructorNote(data.instructor_note);
   if ("session" in data) updateBanner(data.session);
   if (data.type === "question") return renderQuestion(data);

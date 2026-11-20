@@ -518,6 +518,10 @@ async def handle_session_start(study_id: str, chapter: int | None, total: int | 
     db.log_message(study_id, "assistant",
                    f"[{mode} session start] {label}, {total} questions, level {level}", "session")
     q = await _take_next_quiz_question(study_id, sess)
+    if _sessions.get(study_id) is not sess:
+        # A newer start replaced this one while question 1 was being written
+        # (e.g. the button was clicked twice). Leave the newer session alone.
+        return {"type": "superseded", "route": "quiz"}
     if q is None:
         _sessions.pop(study_id, None)
         sess["active"] = False
