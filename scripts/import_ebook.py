@@ -3,6 +3,8 @@
 Run ON THE SERVER only (the book never goes into git):
 
     python scripts/import_ebook.py ebook/<your-book>.pdf      (or .epub)
+    python scripts/import_ebook.py ebook/                     (a folder of chapter PDFs,
+                                                               e.g. "Book part 5.pdf" = Chapter 5)
 
 What it does
   1. Reads the book (PDF via its bookmarks/outline, or EPUB via its chapters).
@@ -114,6 +116,126 @@ def read_pdf(path: Path, chapter_re: re.Pattern) -> list[dict]:
             sections_out.append({
                 "chapter": ch, "chapter_title": ch_title, "section": s_title,
                 "pages": [(pg + 1, texts[pg]) for pg in pages],
+            })
+    return sections_out
+
+
+# ---------------------------------------------------------------------------
+# A folder of chapter PDFs ("Therapy ED Book part 5.pdf" = Chapter 5)
+# ---------------------------------------------------------------------------
+
+def _natural_key(path: Path):
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", path.name)]
+
+
+def _printed_page_numbers(texts: list[str]) -> list[str]:
+    """The book's own page numbers (a line that is just a number at the top or
+    bottom of a page), if most pages have one; otherwise blanks."""
+    found = []
+    for t in texts:
+        lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+        cand = [ln for ln in (lines[:2] + lines[-2:]) if re.fullmatch(r"\d{1,4}", ln)]
+        found.append(cand[-1] if cand else "")
+    return found if sum(1 for f in found if f) >= 0.5 * max(1, len(found)) else [""] * len(found)
+
+
+_SMALL = {"a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with", "vs"}
+
+
+def _looks_like_heading(line: str, next_line: str) -> bool:
+    """A short Title Case / ALL CAPS line followed by body text."""
+    line = line.strip()
+    words = line.split()
+    if not (2 <= len(words) <= 9) or len(line) > 70 or line[-1:] in ".,;:?!":
+        return False
+    if re.search(r"\d{2,}|^\d|page\b|figure|table\b|copyright", line, re.I):
+        return False
+    caps = [w for w in words if w.lower() not in _SMALL]
+    if not caps:
+        return False
+    titled = sum(1 for w in caps if w[:1].isupper()) / len(caps)
+    return (line.isupper() or titled >= 0.9) and len(next_line.strip()) > 40
+
+
+def _heading_sections(texts: list[str], chapter_re: re.Pattern) -> list[tuple[int, str]]:
+    """Section starts found from headings in the text (used when the PDF has
+    no bookmarks). One heading per page at most; repeated running headers
+    (the same line on many pages) are ignored."""
+    counts: dict[str, int] = {}
+    for t in texts:
+        for ln in set(x.strip() for x in t.splitlines()):
+            counts[ln] = counts.get(ln, 0) + 1
+    out = []
+    for pg, t in enumerate(texts):
+        lines = [x for x in t.splitlines() if x.strip()]
+        for i, ln in enumerate(lines[:-1]):
+            if counts.get(ln.strip(), 0) > 2 or chapter_re.match(ln):
+                continue
+            if _looks_like_heading(ln, lines[i + 1]):
+                out.append((pg, ln.strip().title() if ln.isupper() else ln.strip()))
+                break
+    return out
+
+
+def read_pdf_folder(folder: Path, chapter_re: re.Pattern) -> list[dict]:
+    from pypdf import PdfReader
+    files = sorted(folder.glob("*.pdf"), key=_natural_key)
+    if not files:
+        raise SystemExit(f"No PDF files in {folder}")
+    sections_out = []
+    for path in files:
+        reader = PdfReader(str(path))
+        texts = []
+        for p in reader.pages:
+            try:
+                texts.append(p.extract_text() or "")
+            except Exception:
+                texts.append("")
+        n = len(texts)
+        chars = sum(len(t.strip()) for t in texts)
+        # chapter number: a "Chapter N" heading on the first pages, else the
+        # number in the file name ("... part 5.pdf")
+        ch, ch_title = None, ""
+        for t in texts[:3]:
+            for line in t.splitlines()[:10]:
+                m = chapter_re.match(line)
+                if m:
+                    ch, ch_title = int(m.group(1)), (m.group(2) or "").strip()
+                    break
+            if ch is not None:
+                break
+        if ch is None:
+            nums = re.findall(r"(\d+)", path.stem)
+            if not nums:
+                print(f"  skipped {path.name}: no chapter number in the file name or first pages")
+                continue
+            ch = int(nums[-1])
+        scanned = n and chars / n < 80
+        print(f"  {path.name}: Chapter {ch}, {n} pages"
+              + ("  ** looks like scanned images (little text) - needs OCR **" if scanned else ""))
+        printed = _printed_page_numbers(texts)
+        # sections: the PDF's bookmarks inside this file, if it has any
+        marks = [(d, t, p) for d, t, p in _pdf_outline(reader) if not chapter_re.match(t)]
+        if marks:
+            top = min(d for d, _, _ in marks)
+            subs = sorted((p, t) for d, t, p in marks if d == top)
+        else:
+            subs = _heading_sections(texts, chapter_re)
+        if not ch_title and subs and subs[0][0] == 0:
+            ch_title = subs[0][1]       # first heading of the part names the chapter
+        bounds = [(0, "")] + [(p, t) for p, t in subs if p > 0 or t]
+        merged = []
+        for p, t in bounds:
+            if merged and merged[-1][0] == p:
+                merged[-1] = (p, t or merged[-1][1])
+            else:
+                merged.append((p, t))
+        for j, (s_start, s_title) in enumerate(merged):
+            s_end = merged[j + 1][0] if j + 1 < len(merged) else n
+            pages = range(s_start, max(s_end, s_start + 1))
+            sections_out.append({
+                "chapter": ch, "chapter_title": ch_title, "section": s_title,
+                "pages": [(printed[pg] if pg < n else "", texts[pg] if pg < n else "") for pg in pages],
             })
     return sections_out
 
@@ -233,7 +355,8 @@ def embed(chunks: list[dict]) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("book", type=Path, help="path to the e-book (.pdf or .epub)")
+    ap.add_argument("book", type=Path,
+                    help="the e-book (.pdf or .epub), or a folder of chapter PDFs")
     ap.add_argument("--chapter-pattern", default=DEFAULT_CHAPTER_RE,
                     help="regex for chapter headings; group 1 = chapter number, group 2 = title")
     ap.add_argument("--first-chapter", type=int, default=config.FIRST_PRACTICE_CHAPTER,
@@ -242,7 +365,9 @@ def main() -> None:
     chapter_re = re.compile(args.chapter_pattern, re.IGNORECASE)
 
     print(f"Reading {args.book} ...")
-    if args.book.suffix.lower() == ".epub":
+    if args.book.is_dir():
+        sections = read_pdf_folder(args.book, chapter_re)
+    elif args.book.suffix.lower() == ".epub":
         sections = read_epub(args.book, chapter_re)
     else:
         sections = read_pdf(args.book, chapter_re)

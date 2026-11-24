@@ -596,8 +596,9 @@ What to review — tell the student exactly which chapters and sections to go
 back to, using the "Sections to review" list in the FACTS (copy the chapter
 and section names exactly; most-missed first). Then name one pattern in the
 missed questions (e.g. "choosing a later step when the question asked what to
-do FIRST"). If the FACTS give a difficulty change, say in one sentence what
-level the next session will be and why (their score).
+do FIRST"). Mention difficulty levels ONLY if the FACTS include a
+"Difficulty:" line; otherwise say nothing about levels or the next session's
+difficulty.
 
 Next steps — two or three concrete actions, including which chapter or topic
 of their own TherapyEd book to reread (reference only) and what to try in the

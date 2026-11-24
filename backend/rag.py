@@ -226,6 +226,9 @@ def source_for(query: str, chapter: int | None = None) -> dict | None:
         return {"kind": "notes", "chapter": chapter, "section": "", "pages": ""} if chapter else None
     h = hits[0]
     m = re.match(r"\[([^\]]*)\]", h["text"])
+    doc_chapter = source_chapter(h["source"])
+    # Only a chapter's own notes name a real section; general notes (exam
+    # structure, Bloom's ladder, ...) do not, so report just the chapter.
     return {"kind": "notes", "doc": h["source"],
-            "chapter": source_chapter(h["source"]) or chapter,
-            "section": (m.group(1).strip() if m else ""), "pages": ""}
+            "chapter": doc_chapter or chapter,
+            "section": (m.group(1).strip() if m and doc_chapter else ""), "pages": ""}
